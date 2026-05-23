@@ -1,0 +1,47 @@
+{
+	// Use IntelliSense to learn about possible attributes.
+	// Hover to view descriptions of existing attributes.
+	// For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+	"version": "0.2.0",
+	"configurations": [
+		{
+			"name": "(terminal + gdb) Child fork",
+			"type": "cppdbg",
+			"request": "launch",
+			"program": "${workspaceFolder}/ircserv",
+			"stopAtEntry": false,
+			"cwd": "${workspaceFolder}",
+			"environment": [],
+			"externalConsole": false,
+			"args": [
+				"6667"
+			],
+			"MIMode": "gdb",
+			"setupCommands": [
+				{
+					"description": "Habilitar la impresión con sangría para gdb",
+					"text": "-gdb-set follow-fork-mode parent",
+					"ignoreFailures": true
+				}
+			]
+		},
+		{
+			"name": "(terminal + gdb) Child test fork",
+			"type": "cppdbg",
+			"request": "launch",
+			"program": "${workspaceFolder}/tester/ircserv_tester",
+			"stopAtEntry": false,
+			"cwd": "${workspaceFolder}/tester",
+			"environment": [],
+			"externalConsole": false,
+			"MIMode": "gdb",
+			"setupCommands": [
+				{
+					"description": "Habilitar la impresión con sangría para gdb",
+					"text": "-gdb-set follow-fork-mode parent",
+					"ignoreFailures": true
+				}
+			]
+		}
+	]
+}

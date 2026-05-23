@@ -1,0 +1,242 @@
+Small IRC Server [ft_irc 
+42 The Network
+]
+Ahmed Fatir
+Ahmed Fatir
+
+Follow
+16 min read
+·
+Feb 21, 2024
+71
+
+
+1
+
+
+
+Hi, my name is Ahmed FATIR, and I’m a computer science student at 1337 School part of the 
+42 The Network
+, In this article, we will explore the world of Sockets and Network Programming.
+
+Press enter or click to view image in full size
+
+INTRODUCTION
+The ft_irc project by 1337 School is an interesting undertaking exploring computer networking and communication protocols. As a part of the 1337 School curriculum, the project aims to challenge students to develop an IRC (Internet Relay Chat) server from scratch using C++.
+
+In this article, I will be providing a detailed introduction to the fundamental concepts of network programming. I will take you through the process of building a small IRC server that will serve as a crucial component of the ft_irc project. We will be exploring the basics of network programming such as socket programming, connection handling, and data exchange.
+
+By the end of this article, you will have a better understanding of network programming and how to build a basic IRC server. You will learn how to create a socket, bind it to a specific port, listen for incoming connections, and handle client connections. We will also discuss the different types of sockets available and their use cases.
+
+So, if you’re interested in learning the basics of network programming or want to build your own IRC server, then let’s dive into the exciting world of network programming together!
+
+The main parts of the project:
+Create all the necessary classes and methods for the project
+Create a socket and handle the server signals.
+Use the poll() function to check if an event has occurred.
+If the event is a new client, register it.
+If the event is data from a registered client, handle it.
+Part 1: Create all the necessary classes and methods for the project.
+In this part, we will create all the initial data and prepare everything we need throughout the project.
+
+(don’t worry, At the end of the article, you will find the entire code and a link to my GitHub repository.):
+
+
+As you might have noticed, we will need to create two classes: one for the server and another for the client. We will also need to include the necessary header files.
+
+The server class will contain all the information about the server. It will also have a vector of clients to keep track of all the clients and manage their requests.
+The client class, on the other hand, will contain all the information about a specific client inside the server.
+To make the code easier to understand, I think adding comments to each method will be helpful.
+
+Part 2: Create a socket and handle the server signals.
+In the first stage of ft_irc, the focus is on creating the foundational components of the IRC server. This includes setting up a communication endpoint and signal handling mechanisms. By doing this, the project establishes a solid framework for future functionalities.
+
+The main question here is “What is a socket?” Essentially, a socket is a file descriptor. If you’re a 42 School student, you’ve probably heard about IPC (inter-process communication). There are various methods that processes can use to communicate with each other, and some projects explore some of these methods. For example, pipes are used in Pipex, signals in Minitalk, semaphores in Philosophers, and of course, sockets in ft_irc and webserv. A socket is an endpoint that enables two processes to communicate with each other, either on the same machine or across a network. It acts as an interface between the application layer and the transport layer of the networking stack.
+
+Let's begin by providing the code in C++ and then explain it in detail to clear all concepts and logic:
+
+
+In the main function, I create a server object and then handle two signals, SIGINT and SIGQUIT. This makes the code more efficient, so when the server is running, and you want to shut it down, you can use (ctrl + c) or (ctrl + \). By handling these two signals, I ensure that the program will close all the file descriptors (sockets) before quitting. To do this, when a signal arrived the SignalHandler()sets the variable Signal to true, and I check its status during the server execution.
+
+In the code snippet, you can see a call to the ServerInit() function, which serves as the main function of the server. A try-catch block is added to handle any exceptions that may occur. Within the ServerInit() function, the port is set to 4444, but this value can be changed to any other valid port number between 0 and 65535. The reason for this range is that in TCP and UDP, a port number is represented by a 16-bit unsigned integer, and there are three types of ports.
+
+Ports 0 to 1023 are reserved for specific services and protocols, such as HTTP (port 80), FTP (port 21), and SSH (port 22). They require administrative privileges to use
+Ports numbered 1024 to 49151 can be registered for specific purposes and are used by non-standard applications and services.
+Dynamic or private ports (49152 to 65535) are used by client applications for outgoing connections. These ports are dynamically allocated by the operating system to clients when they initiate outgoing connections.
+Let's move to the SerSocket() function, now the fun begins, first I create a sockaddr_in struct object that contains important information about the server address. The sockaddr_in struct is used to represent an IPv4 address and port number combination. It's part of the socket address structure sockaddr family, specifically designed for IPv4 addresses.
+
+struct sockaddr_in {
+ sa_family_t     sin_family;
+ in_port_t       sin_port;
+ struct  in_addr sin_addr;
+ char            sin_zero[8];
+};
+struct in_addr {
+ in_addr_t s_addr;
+};
+sin_family: An integer representing the address family. For IPv4, this is typically set to AF_INET.
+sin_port: A 16-bit integer representing the port number. This value is stored in network byte order (big-endian). That is why we use htons() function for converting a 16-bit unsigned short integer from host byte order to network byte order.
+sin_addr: A structure in_addr containing the IPv4 address. This structure typically has a single member, representing the IPv4 address in network byte order. INADDR_ANY It represents “any” IP address, meaning the socket will be bound to all available network interfaces on the host.
+sin_zero: This field is padding to make the structure the same size as struct sockaddr, which is necessary for compatibility reasons. It's typically unused and filled with zeros.
+struct pollfd NewPoll;
+the struct pollfd is a structure used for monitoring file descriptors for I/O events. It’s commonly employed with the poll() system call to perform multiplexed I/O, allowing a program to efficiently wait for events on multiple file descriptors simultaneously without having to resort to blocking I/O operations.
+
+struct pollfd {
+ int     fd; //-> file descriptor
+ short   events;//-> requested events
+ short   revents;//-> returned events
+};
+fd The file descriptor to be monitored.
+events A bitmask specifies the events to monitor for the given file descriptor. Common events include read, write, error, and hang-up events. like POLLIN:(any readable data available) or POLLHUP:(file descriptor was “hung up” or closed)….
+revents A bitmask indicating the events that occurred for the given file descriptor. This member is typically filled in by the poll() function upon return and indicates the events that triggered the poll.
+Now it is time to create the socket using the system call socket()
+
+int socket(int domain, int type, int protocol);
+The socket()function is a system call used to create a new socket of a specified type (such as stream or datagram) and returns a file descriptor that can be used to refer to that socket in subsequent system calls.
+
+domain Specifies the communication domain or address family for the socket. Common values include AF_INET for IPv4 communication and AF_INET6 for IPv6 communication.
+type Specifies the type of communication semantics for the socket. Common values include SOCK_STREAM for TCP sockets (providing reliable, bidirectional, byte-stream communication) and SOCK_DGRAM for UDP sockets (providing datagram-oriented communication).
+protocol Specifies the specific protocol to be used with the socket. For most socket types, this argument is set to 0, indicating that the system should choose an appropriate protocol based on the specified domain and type.
+Now that we have the socket file descriptor, the next step is to bind it with the address. However, some important options need to be set first
+
+To begin, it is necessary to set the SO_REUSEADDR option for the socket.
+
+int setsockopt(int sockfd, int level, int optname, const void *optval, socklen_t optlen);
+The setsockopt() function is used to set options on a socket. It allows you to configure various socket-level options to control the behavior of the socket. In the provided example, it's being used to set the SO_REUSEADDR option on a socket.
+level is used to indicate The protocol level at which the option resides. For socket-level options, Setting the level parameter to SOL_SOCKET tell the setsockopt() function that the option being set is a socket-level option and should be applied to the socket itself. Other possible values level correspond to specific protocol families, such as IPPROTO_TCP for TCP-specific options or IPPROTO_IP for IP-specific options.
+The optname argument sets to SO_REUSEADDR option, which can be set on a socket, allows for the immediate reuse of local addresses and ports. This is especially useful in situations where a server needs to bind to the same address and port it was previously using, without waiting for the default TIME_WAIT state to expire. In TCP, when a server stops running, the port and address are typically reserved for a duration called the TIME_WAIT state, which lasts for twice the Maximum Segment Lifetime (2MSL). During this time, delayed packets related to the previous connection are managed. However, the setting SO_REUSEADDR enables the socket to bypass this reservation period and reuse the port and address right away.
+The optval parameter is a pointer to the value that needs to be set for the option. In the given example, it refers to a pointer to the en variable.
+The optlen parameter represents the size of the option value, in bytes. Setting the en value to 1 indicates that the option is enabled.
+It is now the time to use the fcntl() function.
+
+int fcntl(int fd, int cmd, ... /* arg */ );
+The fcntl() function performs various control operations on file descriptors. In the provided code, it's being used to set the O_NONBLOCK flag on the server socket file descriptor.
+
+fd is The file descriptor on which to operate.
+cmd is The operation to perform. In this case, it's F_SETFL, indicating that you want to set the file status flags.
+fcntl() is used to set the O_NONBLOCK flag on the server socket file descriptor. This flag sets the socket to non-blocking mode, which means that operations such as read() and write() on the socket will return immediately, even if there is no data available to read or the write operation cannot be completed immediately. and this provides a flexible and efficient mechanism for handling I/O operations asynchronously without blocking the program’s execution.
+
+For instance, if you are connected to a server through the NetCut(nc) tool and you type something in the terminal but don't hit the send button, and then you attempt to shut down the server, you will not be able to do so, because there is a reading operation in progress.
+
+The next step in the process is to bind the socket using the bind()function.
+
+int bind(int sockfd, const struct sockaddr *addr, socklen_t addrlen);
+When you create a socket using the socket() function, it's just a communication endpoint without any specific address or port associated with it.
+
+The bind() function enables you to assign a specific address and port to a socket, thus providing it with a unique identity on the network. By associating a socket with an address and port, you enable other processes to communicate with it over the network.
+
+The address can be an IP address (IPv4 or IPv6) or a hostname, and the port is a numerical value that identifies a specific service running on the host.
+
+Get Ahmed Fatir’s stories in your inbox
+Join Medium for free to get updates from this writer.
+
+Enter your email
+Subscribe
+
+Remember me for faster sign in
+
+You can bind your program to any port within the available range that we discussed earlier. However, there is an important point to note. If you bind your program to port 0, the operating system will automatically bind it to any available port within the range of Dynamic or private ports (49152 to 65535). This can be useful when the specific port number is not important.
+
+The bind() function takes three parameters: the socket file descriptor (sockfd), a pointer to a struct sockaddr containing the address information (addr), and the size of the address structure (addrlen).
+
+If you wondering about the argument type used in add argument, Why is that specific type used? well As you may know, the address family of a socket can be either IPV4 or IPV6. If we had to create two separate implementations for the bind() function, one for IPV4 and another for IPV6, it would be inefficient. Instead, struct sockaddr is used as a generic type that can hold various types of socket addresses including IPv4, IPv6, and other address types supported by different protocols. Typically, you would cast this method to a pointer of the appropriate socket address structure type, such as struct sockaddr_in for IPv4 addresses or struct sockaddr_in6 for IPv6 addresses. This allows you to access the address and port fields specific to the address family.
+
+To accept incoming connections, we need to make the socket passive. But before that, let's understand the difference between passive and active sockets in a network communication scenario.
+
+Active Socket (IRC Client):
+
+An active socket in IRC represents the client-side connection to an IRC server. The IRC client initiates communication by connecting to the IRC server using a TCP/IP connection. Once connected, the client can send commands and messages to the server and receive responses. The IRC client socket handles user input, sends messages to the server, and processes server responses.
+Passive Socket (IRC Server):
+
+A passive socket in IRC represents the server-side listening socket that accepts incoming connections from IRC clients. The IRC server listens for incoming connections on a specific port, When a connection request is received from an IRC client, the server socket accepts the connection, creating a new socket for communication with that client. The IRC server socket manages multiple client connections simultaneously, handling commands and messages from each connected client and broadcasting messages to all clients as needed.
+Press enter or click to view image in full size
+
+The image demonstrates the active and passive TCP connection opening
+To make the socket passive, we should use the listen() system call.
+
+int listen(int sockfd, int backlog);
+The listen() function is used on a socket that has been bound using bind() to set it up as a passive socket, ready to accept incoming connections. It's typically used in server applications after the socket has been created and bound to a specific address and port.
+
+sockfd: The file descriptor of the socket that has been created and bound using bind().
+backlog: The maximum length of the queue of pending connections. This parameter determines the maximum number of connection requests that can be queued by the operating system while the server is handling existing connections.
+Now, The final step is to fill the struct pollfd with the server information. To make the server ready to receive incoming connections, set the events argument to POLLIN and push the struct to the vector fds.
+
+If you have reached this part, congratulations! We have just completed the most challenging and wonderful step in the project. Now, it's time to accept the clients and fulfill their desires.
+
+Part 3: Use the poll() function to check if an event has occurred.
+To start, we need to add some code to the ServerInit() function.
+
+
+while (Server::Signal == false): A loop that continues running until the Signal variable in the Server class is set to true. This loop is the main event loop of the server, where it waits for events and processes them.
+
+if((poll(&fds[0],fds.size(),-1) == -1) && Server::Signal == false): Uses the poll() function to wait for events on multiple file descriptors (fds). The -1 timeout parameter indicates that poll() will block indefinitely until an event occurs or until the loop is terminated by setting Server::Signal to true. If poll() fails, it throws a std::runtime_error.
+
+Nested Loop: Iterates through all file descriptors (fds) to check if there is data to read.
+
+if (fds[i].revents & POLLIN): Checks if the POLLIN event is set, indicating that there is data to read on the file descriptor.
+
+if (fds[i].fd == SerSocketFd): Checks if the file descriptor is the server socket. If so, it calls AcceptNewClient() to accept a new client connection.
+
+Otherwise, it calls ReceiveNewData() to receive new data from a registered client.
+
+Closing File Descriptors: Calls a function or method named CloseFds() to close all file descriptors when the server stops running.
+
+I think we should begin by gaining an understanding of how the poll() function operates.
+
+int poll(struct pollfd *fds, nfds_t nfds, int timeout);
+fds: An array of struct pollfd structures, each representing a file descriptor to be monitored.
+nfds: The number of elements in the fds array.
+timeout: The maximum time to wait for an event to occur, in milliseconds. A value of -1 means wait indefinitely, 0 means return immediately, and a positive value specifies a timeout period.
+It is essential to comprehend how the poll() function operates, particularly in event-driven programming situations like network servers. The poll() function is a system call that is used to monitor several file descriptors to determine if I/O is feasible on any of them. It enables a program to wait for events on several file descriptors instead of blocking on a single descriptor at a time.
+
+The poll() function is used to monitor changes in the status of file descriptors. It blocks until an event occurs on one or more of the monitored file descriptors, or until the specified timeout expires.
+When an event occurs (e.g., data becomes available for reading, a connection is established, or a socket becomes ready for writing) on one or more of the monitored file descriptors, the operating system notifies the poll() function.
+If an event occurs on one or more file descriptors, poll() returns the number of file descriptors for which events occurred. If no events occurred before the timeout expires, poll() returns 0. However, if an error occurs, poll() returns -1 and the specific error is indicated by the errno value.
+the poll() is designed to efficiently handle multiple file descriptors using efficient data structures and algorithms. It blocks the calling process until an event occurs, thus avoiding the need for busy waiting or polling and minimizing CPU usage.
+When the condition fds[i].fd == SerSocketFd is satisfied, it means that an event has occurred on the server socket SerSocketFd. In a server application, this type of event usually indicates that a new client is trying to connect to the server. The server socket SerSocketFd is responsible for receiving incoming connection requests from the clients.
+
+Let's proceed to the next stage of accepting new clients.
+
+part 4: accepting new clients.
+This function handles client registration on the server.
+
+
+When an event occurs on the server socket (indicating an incoming connection request), the server application calls the accept() function to accept the connection.
+The accept() function blocks until a connection request is received, at which point it returns a new file descriptor representing the connection with the client.
+Before calling accept(), we need to declare the struct sockaddr_in and the struct pollfd to store client informations.
+
+int accept(int sockfd, struct sockaddr *addr, socklen_t *addrlen);
+sockfd: The file descriptor of the server socket that is listening for incoming connections.
+addr: A pointer to a struct sockaddr structure where the address of the connecting client will be stored. This allows the server to identify the IP address and port number of the client that initiated the connection.
+addrlen: A pointer to a socklen_t variable that specifies the size of the addr structure. Upon return, it will be updated with the actual size of the address stored in addr.
+If accept() succeeds, it returns a new file descriptor representing the client socket. This file descriptor is used for communication with the client.
+
+Although the client socket and server socket are two separate entities, they can share some properties and settings based on the operating system and network configuration. For example, the configuration of the server socket can influence the client socket's local address, port, and protocol settings. It is recommended to ensure that the new socket is also in non-blocking mode by making the fcntl() call with the same argument as the previous call made during the creation of the server socket.
+
+I believe that the remaining code is easy to understand. Firstly, we fill the pollfd struct with the client's information, and then we set the client's IP address and port. After that, we add the new client(cli) and the new fds(NewPoll) to the server class, and print that the client is connected.
+
+part 5: receive new data from a registered client
+In this final part, we will be handling incoming data from a registered client. If an event occurs in a different file descriptor than the server's, we will immediately know that a client has sent data that needs to be processed.
+
+
+To receive data from a client socket, we start by declaring a character array called buff to store the received data.
+We then initialize the buffer to all zeros using the memset() function to ensure any previous data is cleared.
+Next, we call the function recv() to receive the data from the client socket specified by the file descriptor. Data is read into the array, with a maximum of a certain number of bytes to leave space for a null terminator. The number of bytes received is stored in the variable bytes.
+We check if the function returned a non-positive value, indicating that the client has disconnected or an error occurred during data reception.
+If the client disconnects, we print a message indicating the disconnection. We then call a function to clear any associated client data or resources. Finally, we close the client socket using the close() function.
+If data was successfully received from the client, we null-terminate the data in the buffer to ensure it can be treated as a C-style string. We then print the received data along with the client’s file descriptor.
+Let's perform a demonstration of the recv() system call.
+
+ssize_t recv(int sockfd, void *buf, size_t len, int flags);
+The recv() function is used in socket programming to receive data from a connected socket. It's commonly used in TCP (Transmission Control Protocol) socket communication to read data sent by the remote peer.
+
+sockfd: The file descriptor of the socket from which to receive data.
+buf: A pointer to the buffer where the received data will be stored.
+len: The maximum number of bytes to receive and store in the buffer.
+flags: Optional flags to control the behavior of the recv() function (e.g., specifying additional receive options): In recv(), the flags parameter provides additional receive options for explicit control over the operation. Available flags are MSG_WAITALL, MSG_DONTWAIT, MSG_PEEK, and MSG_TRUNC. By selecting the right flags, you can tailor the receive operation to your needs, making it more efficient and versatile.
+As promised, here is the complete code. You can copy it and modify it as you desire.
+
+
+I believe that we have covered all the important aspects of creating a simple IRC server. The remaining part is just handling the data received from the client, as required by the ft_irc subject, by writing logical code and implementing error handling. In case you are confused about the rest of the project and the basic commands that need to be handled (PASS, NICK, USER, JOIN, PART, TOPIC, INVITE, KICK, QUIT, MODE, and PRIVMSG), you can find the entire project on my GitHub repository.
+
+I hope I’ve covered all the basics and the overall requirements, if you reach this part thank you a lot, Please feel free to ask me any questions if you need any further clarification, here is my LinkedIn profile, and I will be happy to connect.
