@@ -28,10 +28,10 @@ pw: the global pw users must provide to connect
    - [] messaging
 
 [] support channel operator commands for admin
-   - [] KICK:	Boot a user out of the channel.
-   - [] INVITE:	Allow a specific user into a channel.
-   - [] TOPIC:	View or change the channel's description.
-   - [] MODE:	Change the rules of the channel (see below).
+   - [] `KICK`:	Boot a user out of the channel.
+   - [] `INVITE`:	Allow a specific user into a channel.
+   - [] `TOPIC`:	View or change the channel's description.
+   - [] `MODE`:	Change the rules of the channel (see below).
 
 [] support channel mods
    - []`i`: Make the channel invite-only.
@@ -61,6 +61,6 @@ grandfather of Slack or Discord
 
 
 # Questions
-Q1. how to connect to correct recipients?
-Q2. IRC text commands?
-Q3. how IRC is working?
+- Q1. how to connect to correct recipients?
+- Q2. all IRC text commands to cover?
+- Q3. how IRC is working in detail?
