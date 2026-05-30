@@ -95,10 +95,6 @@ grandfather of Slack or Discord
 
 > connection establisted !
 
-
-
-
-
 ## functions
 ### socket related
 #### socket()
@@ -171,37 +167,67 @@ ircserv/
 
 ### implementation order (step-by-step)
 #### phase 1 — skeleton + server loop
-1. `Makefile`: `NAME=ircserv`, `c++ -Wall -Wextra -Werror -std=c++98`
-2. `main.cpp`: parse `<port>` and `<password>` args, handle SIGINT/SIGQUIT with static Server pointer
-3. `Server`: create TCP socket → `setsockopt(SO_REUSEADDR)` → `bind()` → `listen()` → `fcntl(O_NONBLOCK)`
-4. `Server::run()`: main `poll()` loop
-   - if `_pfds[0]` (listen fd) is POLLIN → `accept()` new client, add to `_pfds` and `_clients`
-   - for each client fd with POLLIN → `recv()` into `Client::_readBuf`, extract `\r\n`-delimited lines, dispatch command
-   - on 0-byte recv or POLLERR → disconnect client
+- [x] `main.cpp`: parse `<port>` and `<password>` args, validate range, create Server, call run()
+- [ ] Fix `Server.hpp`
+   - [ ] move constructor body to Server.cpp (inline initialization in header is invalid C++98)
+   - [ ] add missing fields: `std::vector<pollfd> _pfds`, `std::map<int,Client*> _clients`, `std::map<std::string,Channel*> _channels`
+   - [ ] add `#include <poll.h>`, `<fcntl.h>`, `<map>`, `<vector>` to `ft_irc.hpp`
+- [ ] Fix/rewrite `Server.cpp::initSocket()`
+   - [ ] add `setsockopt(SO_REUSEADDR)` after `socket()` — without this, `bind()` fails for 60s after Ctrl+C
+   - [ ] add `fcntl(_sockfd, F_SETFL, O_NONBLOCK)` — required by subject
+- [ ] Rewrite `Server::run()` as a `poll()` loop
+   - [ ] push listen fd into `_pfds[0]` with `events=POLLIN`
+   - [ ] loop: `poll(_pfds.data(), _pfds.size(), -1)`
+   - [ ] if `_pfds[0]` is POLLIN → `accept()` new client → add new `pollfd` + `Client*` to maps
+   - [ ] for each client fd with POLLIN → `recv()` into `Client._readBuf` → extract `\r\n` lines → dispatch command
+   - [ ] on `recv()==0` or POLLERR → disconnect (close fd, erase from `_pfds` and `_clients`)
+- [ ] Add signal handling in `main.cpp` (SIGINT/SIGQUIT → set bool flag → break `run()` loop)
+   - [ ] use `signal()` or `sigaction()` with a static flag (not `exit()` directly — need cleanup)
+- [ ] Create `Client.hpp` / `Client.cpp` (skeleton only for phase 1)
+   - [ ] fields: `int _fd`, `std::string _readBuf`, `bool _registered`, `_passOk`, `_nickSet`, `_userSet`
+   - [ ] methods: `void appendBuf(const std::string&)`, `std::vector<std::string> extractLines()`
 
 #### phase 2 — registration (PASS / NICK / USER)
-5. Parse raw IRC line into `command` + `params` (split on spaces, handle `:` prefix for trailing)
-6. `PASS`: verify password, set `_passOk = true`
-7. `NICK`: check uniqueness, set `_nick`
-8. `USER`: set `_user`, `_realname`
-9. After all three succeed → `_registered = true` → send `001 RPL_WELCOME`
+- [ ] Write IRC line parser: split raw string into command + params (handle `:` trailing param)
+   - [ ] example: `"PRIVMSG #ch :hello world"` → `cmd="PRIVMSG"`, `params=["#ch","hello world"]`
+- [ ] Implement `PASS` command
+   - [ ] reject if already registered
+   - [ ] compare with `_password`, set `client._passOk = true` on match
+   - [ ] send `ERR_PASSWDMISMATCH (464)` on wrong pw
+- [ ] Implement `NICK` command
+   - [ ] reject if nick already taken (scan `_clients` map)
+   - [ ] set `client._nick`, `client._nickSet = true`
+   - [ ] send `ERR_NICKNAMEINUSE (433)` on collision
+- [ ] Implement `USER` command
+   - [ ] set `client._user`, `client._realname`, `client._userSet = true`
+- [ ] After PASS+NICK+USER all set → send `RPL_WELCOME (001)`
+   - [ ] format: `":ircserv 001 <nick> :Welcome to the IRC Network <nick>!<user>@<host>\r\n"`
+   - [ ] set `client._registered = true`
+- [ ] Gate all non-registration commands behind `_registered` check
+   - [ ] send `ERR_NOTREGISTERED (451)` if unregistered client sends other commands
 
 #### phase 3 — channels + messaging
-10. `JOIN #channel [key]`: create or join Channel, enforce `+i` / `+k` / `+l` modes, send `JOIN` + `353 RPL_NAMREPLY` + `366`
-11. `PRIVMSG #channel :text` → broadcast to all Channel members except sender
-12. `PRIVMSG nick :text` → find Client by nick, send directly
-13. `PART`, `QUIT`: remove from channels, close fd, clean up
+- [ ] Create `Channel.hpp` / `Channel.cpp`
+   - [ ] fields: `std::string _name`, `std::set<Client*> _members`, `std::set<Client*> _ops`, `std::string _topic`, `std::string _key`, `int _userLimit`, `bool _inviteOnly`, `bool _topicLocked`
+- [ ] `JOIN #channel [key]`
+   - [ ] create Channel if it doesn't exist, first joiner becomes operator
+   - [ ] enforce `+i` (invite-only), `+k` (key), `+l` (limit)
+   - [ ] send JOIN broadcast + `RPL_NAMREPLY (353)` + `RPL_ENDOFNAMES (366)`
+- [ ] `PRIVMSG #channel :text` → broadcast to all members except sender
+- [ ] `PRIVMSG nick :text` → send directly to target fd
+- [ ] `PART` → remove from channel, broadcast PART, destroy channel if empty
+- [ ] `QUIT` → remove from all channels, close fd, cleanup
 
 #### phase 4 — operator commands
-14. `KICK #channel nick [:reason]`
-15. `INVITE nick #channel`
-16. `TOPIC #channel [:newtopic]`
-17. `MODE #channel +/-flag [param]`
-    - `+i/-i`: invite-only toggle
-    - `+t/-t`: topic-locked toggle
-    - `+k/-k <key>`: channel password
-    - `+o/-o <nick>`: grant/revoke operator
-    - `+l/-l <limit>`: user limit
+- [ ] `KICK #channel nick [:reason]`
+- [ ] `INVITE nick #channel`
+- [ ] `TOPIC #channel [:newtopic]` (view if no param, set if param given, gated by `+t` mode)
+- [ ] `MODE #channel +/-flag [param]`
+   - [ ] `+i/-i` → `_inviteOnly` toggle
+   - [ ] `+t/-t` → `_topicLocked` toggle
+   - [ ] `+k/-k <key>` → set/unset channel password
+   - [ ] `+o/-o <nick>` → grant/revoke operator status
+   - [ ] `+l/-l <limit>` → set/remove user cap
 
 ### critical nc test (partial data)
 ```bash
@@ -212,6 +238,44 @@ nc -C 127.0.0.1 6667
 ```
 - Buffer per client, only dispatch when `\r\n` is found
 - Never call `recv()` outside of poll() readiness check
+
+# Test Plan
+## Phase 1 — can the server accept connections and not crash?
+```
+# Terminal 1: start server
+./ircserv 6667 secret
+
+# Terminal 2: basic connection test (should connect and stay open)
+nc 127.0.0.1 6667
+
+# Test multiple clients at once
+nc 127.0.0.1 6667 &
+nc 127.0.0.1 6667 &
+nc 127.0.0.1 6667 &
+# server should handle all 3 without blocking
+
+# Test partial data (the nc -C fragmentation test)
+nc -C 127.0.0.1 6667
+# then type partial commands and press Enter
+```
+## Phase 2 — does registration work?
+```
+# Send the full registration sequence, should get back 001 RPL_WELCOME
+printf "PASS secret\r\nNICK jiepark\r\nUSER jiepark 0 * :Jin Park\r\n" | nc -C 127.0.0.1 6667
+
+# Wrong password — should get 464 ERR_PASSWDMISMATCH
+printf "PASS wrongpw\r\nNICK jiepark\r\nUSER jiepark 0 * :Jin\r\n" | nc -C 127.0.0.1 6667
+
+# Duplicate nick — open 2 terminals, both send same NICK
+# second should get 433 ERR_NICKNAMEINUSE
+```
+## Using a real IRC client (for phase 2):
+```
+# irssi (available on 42 machines)
+irssi
+# inside irssi:
+/connect 127.0.0.1 6667 secret jiepark
+```
 
 # Questions
 - Q1. how to connect to correct recipients?
