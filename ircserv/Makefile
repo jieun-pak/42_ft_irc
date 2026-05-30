@@ -7,11 +7,11 @@ NAME	= ircserv
 
 # sources
 SRCS	=	srcs/main.cpp \
+			srcs/Server.cpp \
+			srcs/Client.cpp \
 # 			TODO: UPDATE
 # 			srcs/Authentication.cpp \
 # 			srcs/Channel.cpp \
-# 			srcs/Client.cpp \
-# 			srcs/Server.cpp \
 # 			srcs/commands/...cpp
 
 # object
@@ -19,7 +19,9 @@ OBJS = $(SRCS:.cpp=.o)
 
 # header
 #TODO: UPDATE
-HEADERS	= includes/*.h
+HEADERS	=	includes/ft_irc.hpp \
+			includes/Server.hpp \
+			includes/Client.hpp
 
 # default target
 all: $(NAME)
