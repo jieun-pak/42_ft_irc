@@ -119,7 +119,9 @@ void Server::run()
 		}
 
 		// TODO: recv and parse IRC commands
-		
+		if () {
+			
+		}
 		
 		
 	}
