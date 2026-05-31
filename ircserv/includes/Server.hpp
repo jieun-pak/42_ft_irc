@@ -8,11 +8,14 @@
 #include <unistd.h>
 #include <stdlib.h>
 #include <vector>
+#include <map>
 #include <sys/poll.h>
+#include <fcntl.h>
 #include "Client.hpp"
 #include <arpa/inet.h>
 
-//TODO: jin check orthodox canonical form
+class Channel;
+
 class Server
 {
 	private:
@@ -20,8 +23,9 @@ class Server
 		int _sockfd;
 		int _port;
 		std::string _password;
-		// struct sockaddr_in _serv_addr;
-		std::vector<Client> _clients;
+		std::vector<struct pollfd> _pfds;
+		std::map<int, Client*> _clients;
+		std::map<std::string, Channel*> _channels;
 
 	public:
 		Server(int port, std::string password);

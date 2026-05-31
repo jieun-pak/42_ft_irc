@@ -6,7 +6,7 @@ Server::Server(int port, std::string password) : _sockfd(-1), _port(port), _pass
 
 Server::~Server() {}
 
-Server::Server(const Server &other) : _sockfd(other._sockfd), _port(other._port), _password(other._password), _clients(other._clients) {}
+Server::Server(const Server &other) : _sockfd(other._sockfd), _port(other._port), _password(other._password), _pfds(other._pfds), _clients(other._clients), _channels(other._channels) {}
 
 Server &Server::operator=(const Server &other)
 {
@@ -15,7 +15,9 @@ Server &Server::operator=(const Server &other)
 		_sockfd = other._sockfd;
 		_port = other._port;
 		_password = other._password;
+		_pfds = other._pfds;
 		_clients = other._clients;
+		_channels = other._channels;
 	}
 	return *this;
 }
@@ -73,56 +75,40 @@ void Server::acceptConnection()
 	}
 
 	std::cout << inet_ntoa(cli_addr.sin_addr) << "\n";
-		std::cout << ntohs(cli_addr.sin_port) << "\n";
+	std::cout << ntohs(cli_addr.sin_port) << "\n";
 
-	_clients.push_back(Client(clientFd)); //add from _clients[0]
+	_clients[clientFd] = new Client(clientFd);
 }
 
 void Server::run()
 {
 	initSocket();
 	bindSocket();
-	listenSocket();	// fds[0] = sever.fd, server.events, server.revents
-	// fds[1] = clients1.fd
-	// fds[2] = clients2.fd
-	std::vector<struct pollfd> fds;
+	listenSocket();
 	struct pollfd serverPfd;
-	serverPfd.fd = _sockfd;			// fd to watch
-	serverPfd.events = POLLIN;		// watch for POLLIN = data ready to read
-	serverPfd.revents = 0;			// output
-	fds.push_back(serverPfd);		// fds[0]  = serverpfd.fd, .events, .revents
+	serverPfd.fd = _sockfd;
+	serverPfd.events = POLLIN;
+	serverPfd.revents = 0;
+	_pfds.push_back(serverPfd);
 
 	while (true)
 	{
-		/*call poll()
-			- timeout: -1 = wait forever
-			- poll() makes fds.size() grows as clients join
-			- after poll() returns, revents is set by OS, then you zero it before poll()
-			- return value: -1 = err, 0 = timeout, + = number of elements (revents > 0)
-		*/
-		int ready = poll(&fds[0], fds.size(), -1);
+		int ready = poll(&_pfds[0], _pfds.size(), -1);
 		if (ready < 0)
 		{
 			std::cerr << "poll error" << std::endl;
-				std::cout << "hi A";
-
 			break;
 		}
-		if (fds[0].revents & POLLIN)				
+		if (_pfds[0].revents & POLLIN)
 		{
 			acceptConnection();
 			struct pollfd clientPfd;
-			clientPfd.fd = _clients.back().getFd();  //_clients[0] =... _client[1] = 
+			clientPfd.fd = _clients.rbegin()->first;
 			clientPfd.events = POLLIN;
 			clientPfd.revents = 0;
-			fds.push_back(clientPfd); // fds[1]. [2]. ...
+			_pfds.push_back(clientPfd);
 		}
 
 		// TODO: recv and parse IRC commands
-		if () {
-			
-		}
-		
-		
 	}
 }
