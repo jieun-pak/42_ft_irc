@@ -1,5 +1,5 @@
 #include "../includes/Server.hpp"
-
+#include "../includes/signal.hpp"
 int	main(int argc, char **argv)
 {
 	if (argc != 3)
@@ -21,7 +21,7 @@ int	main(int argc, char **argv)
 		std::cerr << "Password cannot be empty" << std::endl;
 		return 1;
 	}
-
+	signal(SIGINT, signal_handler);
 	Server server(port, password);
 	server.run();
 
