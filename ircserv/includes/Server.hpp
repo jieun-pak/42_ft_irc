@@ -28,7 +28,7 @@ class Server
 		std::map<std::string, Channel*> _channels;
 
 	public:
-		Server(int port, std::string password);
+		Server(int port, const std::string &password);
 		~Server();
 		Server(const Server &other);
 		Server &operator=(const Server &other);
