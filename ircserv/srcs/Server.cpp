@@ -139,6 +139,6 @@ void Server::run()
 				}
 		   }   
     	}
+	}
 }
-
 	// TODO: recv and parse IRC commands from clients, handle client disconnections, manage channels, etc.
