@@ -81,7 +81,7 @@ void Server::listenSocket()
 }
 
 // Accept incoming connections (e.g., using accept() system call)
-void Server::acceptConnection()
+int Server::acceptConnection()
 {
 	// sockaddr_in : for saving IP, port
 	struct sockaddr_in cli_addr;
@@ -98,6 +98,7 @@ void Server::acceptConnection()
 	std::cout << ntohs(cli_addr.sin_port) << "\n";
 
 	_clients[clientFd] = new Client(clientFd);
+	return clientFd;
 }
 
 void Server::run()
@@ -121,9 +122,9 @@ void Server::run()
 		}
 		if (_pfds[0].revents & POLLIN)
 		{
-			acceptConnection();
+			int clientFd = acceptConnection();
 			struct pollfd clientPfd;
-			clientPfd.fd = _clients.rbegin()->first;
+			clientPfd.fd = clientFd;
 			clientPfd.events = POLLIN;
 			clientPfd.revents = 0;
 			_pfds.push_back(clientPfd);

@@ -36,7 +36,7 @@ class Server
 		void	initSocket();
 		void	bindSocket();
 		void	listenSocket();
-		void	acceptConnection();
+		int		acceptConnection();
 
 		void	run();
 
