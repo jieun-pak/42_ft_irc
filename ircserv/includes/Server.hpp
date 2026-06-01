@@ -38,8 +38,9 @@ class Server
 		void	listenSocket();
 		int		acceptConnection();
 
-		void	run();
+		void run();
 
+		void NewFunction();
 };
 
 #endif

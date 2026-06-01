@@ -1,4 +1,5 @@
 #include "../includes/Server.hpp"
+#include "Server.hpp"
 
 // constructor, destructor, copy constructor, assignment operator (Orthodox Canonical Form)
 //TODO: habib check Q. do we need _client?
@@ -101,11 +102,8 @@ int Server::acceptConnection()
 	return clientFd;
 }
 
-void Server::run()
+void Server::eventLoop()
 {
-	initSocket();
-	bindSocket();
-	listenSocket();
 	struct pollfd serverPfd;
 	serverPfd.fd = _sockfd;
 	serverPfd.events = POLLIN;
@@ -122,8 +120,8 @@ void Server::run()
 		}
 		for (size_t i = 0; i < _pfds.size(); i++)
 		{
- 		   if (_pfds[i].revents & POLLIN)
-		   {
+			if (_pfds[i].revents & POLLIN)
+			{
 				if (_pfds[i].fd == _sockfd)
 				{
 					int clientFd = acceptConnection();
@@ -137,8 +135,17 @@ void Server::run()
 				{
 					// existing client sent data
 				}
-		   }   
-    	}
+			}
+		}
 	}
 }
-	// TODO: recv and parse IRC commands from clients, handle client disconnections, manage channels, etc.
+
+void Server::run()
+{
+	initSocket();
+	bindSocket();
+	listenSocket();
+	eventLoop();
+}
+
+// TODO: recv and parse IRC commands from clients, handle client disconnections, manage channels, etc.
