@@ -2,9 +2,29 @@
 
 // constructor, destructor, copy constructor, assignment operator (Orthodox Canonical Form)
 //TODO: habib check Q. do we need _client?
-Server::Server(int port, std::string password) : _sockfd(-1), _port(port), _password(password) {}
+Server::Server(int port, const std::string &password) : _sockfd(-1), _port(port), _password(password) {}
 
-Server::~Server() {}
+Server::~Server() {
+	// Close the server socket
+	if (_sockfd != -1)
+	{
+		close(_sockfd);
+	}
+
+	// Clean up client connections
+	for (std::map<int, Client *>::iterator it = _clients.begin(); it != _clients.end(); ++it)
+	{
+		delete it->second;
+	}
+	_clients.clear();
+
+	// Clean up channels
+	for (std::map<std::string, Channel *>::iterator it = _channels.begin(); it != _channels.end(); ++it)
+	{
+		delete it->second;
+	}
+	_channels.clear();
+}
 
 Server::Server(const Server &other) : _sockfd(other._sockfd), _port(other._port), _password(other._password), _pfds(other._pfds), _clients(other._clients), _channels(other._channels) {}
 
