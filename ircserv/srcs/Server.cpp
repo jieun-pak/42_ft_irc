@@ -120,16 +120,25 @@ void Server::run()
 			std::cerr << "poll error" << std::endl;
 			break;
 		}
-		if (_pfds[0].revents & POLLIN)
+		for (size_t i = 0; i < _pfds.size(); i++)
 		{
-			int clientFd = acceptConnection();
-			struct pollfd clientPfd;
-			clientPfd.fd = clientFd;
-			clientPfd.events = POLLIN;
-			clientPfd.revents = 0;
-			_pfds.push_back(clientPfd);
-		}
-
-		// TODO: recv and parse IRC commands
-	}
+ 		   if (_pfds[i].revents & POLLIN)
+		   {
+				if (_pfds[i].fd == _sockfd)
+				{
+					int clientFd = acceptConnection();
+					struct pollfd clientPfd;
+					clientPfd.fd = clientFd;
+					clientPfd.events = POLLIN;
+					clientPfd.revents = 0;
+					_pfds.push_back(clientPfd);
+				}
+				else
+				{
+					// existing client sent data
+				}
+		   }   
+    	}
 }
+
+	// TODO: recv and parse IRC commands from clients, handle client disconnections, manage channels, etc.
