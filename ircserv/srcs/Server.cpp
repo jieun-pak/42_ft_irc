@@ -1,5 +1,4 @@
 #include "../includes/Server.hpp"
-#include "Server.hpp"
 
 // constructor, destructor, copy constructor, assignment operator (Orthodox Canonical Form)
 //TODO: habib check Q. do we need _client?
@@ -20,11 +19,11 @@ Server::~Server() {
 	_clients.clear();
 
 	// Clean up channels
-	for (std::map<std::string, Channel *>::iterator it = _channels.begin(); it != _channels.end(); ++it)
-	{
-		delete it->second;
-	}
-	_channels.clear();
+	// for (std::map<std::string, Channel *>::iterator it = _channels.begin(); it != _channels.end(); ++it)
+	// {
+	// 	delete it->second;
+	// }
+	// _channels.clear();
 }
 
 Server::Server(const Server &other) : _sockfd(other._sockfd), _port(other._port), _password(other._password), _pfds(other._pfds), _clients(other._clients), _channels(other._channels) {}
@@ -102,8 +101,56 @@ int Server::acceptConnection()
 	return clientFd;
 }
 
+// geters
+Client* Server::getClient(int fd)
+{
+	std::map<int, Client*>::iterator it = _clients.find(fd);
+	if (it != _clients.end())
+		return it->second;
+	return NULL;
+	
+}
+
+void Server::recieveData(int clientFd)
+{
+	char buffer[512];
+	Client* current_client = getClient(clientFd);
+	size_t size = 0;
+
+	while (true)
+	{
+		size = recv(clientFd, buffer, sizeof(buffer), 0);
+		current_client->appendToReadBuf(buffer);
+
+		/* note
+		size ==0 : client closed connection (EOF)
+		-> close that fd, clean up client's data
+
+		size ==-1 : err occurred, in non-blocking mode, 
+		if errno = EAGAIN or EWOULDBLOCK, means no date to read, not a fatal err
+		*/
+		if (size <= 0)
+		{
+			// Handle client disconnection
+			std::cout << "Client disconnected: " << clientFd << std::endl;
+			close(clientFd);
+			_clients.erase(clientFd);
+			break;
+		}
+		else
+		{
+			std::vector<std::string> lines = current_client->extractLines();
+			for (size_t i = 0; i < lines.size(); i++)
+			{
+				std::cout << "Received from client " << clientFd << ": " << lines[i] << std::endl;
+			}
+		}
+	}
+}
+
 void Server::eventLoop()
 {
+	// _pfds[0] = for server socket .. _pfds[1]
 	struct pollfd serverPfd;
 	serverPfd.fd = _sockfd;
 	serverPfd.events = POLLIN;
@@ -118,10 +165,13 @@ void Server::eventLoop()
 			std::cerr << "poll error" << std::endl;
 			break;
 		}
+		//ver1
 		for (size_t i = 0; i < _pfds.size(); i++)
 		{
 			if (_pfds[i].revents & POLLIN)
 			{
+				if (_pfds[0].revents & POLLIN)
+					std::cout << "revert of the server changed!\n";
 				if (_pfds[i].fd == _sockfd)
 				{
 					int clientFd = acceptConnection();
@@ -133,11 +183,12 @@ void Server::eventLoop()
 				}
 				else
 				{
-					// existing client sent data
+					//call function handling reading data 
 				}
 			}
 		}
 	}
+}
 }
 
 void Server::run()

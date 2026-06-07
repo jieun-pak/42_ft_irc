@@ -1,12 +1,5 @@
 #include "Server.hpp"
-
-bool server_shutdown = false;
-
-static void	signal_handler(int signal)
-{
-	(void)signal;
-	server_shutdown = true;
-}
+#include "signal.hpp"
 
 int main (int argc, char **argv)
 {

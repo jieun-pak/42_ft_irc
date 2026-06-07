@@ -19,6 +19,7 @@ class Client
 		int							getFd() const;
 		void						appendToReadBuf(const std::string &data);
 		std::vector<std::string>	extractLines();
+		
 };
 
 #endif

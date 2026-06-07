@@ -37,10 +37,12 @@ class Server
 		void	bindSocket();
 		void	listenSocket();
 		int		acceptConnection();
+		void	eventLoop();
+		Client* getClient(int fd);
 
 		void run();
 
-		void NewFunction();
+
 };
 
 #endif

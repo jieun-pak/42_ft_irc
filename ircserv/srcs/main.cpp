@@ -1,5 +1,6 @@
 #include "../includes/Server.hpp"
 #include "../includes/signal.hpp"
+
 int	main(int argc, char **argv)
 {
 	if (argc != 3)
