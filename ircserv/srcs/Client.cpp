@@ -1,11 +1,10 @@
 #include "../includes/Client.hpp"
 
+
+// constructors
 Client::Client(int fd) : _fd(fd) {}
-
 Client::~Client() {}
-
 Client::Client(const Client &other) : _fd(other._fd), _readBuf(other._readBuf) {}
-
 Client &Client::operator=(const Client &other)
 {
 	if (this != &other)
@@ -16,11 +15,15 @@ Client &Client::operator=(const Client &other)
 	return *this;
 }
 
+
+// getters
 int Client::getFd() const
 {
 	return _fd;
 }
 
+
+// methods
 void Client::appendToReadBuf(const std::string &data)
 {
 	_readBuf += data;

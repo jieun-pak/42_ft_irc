@@ -38,12 +38,13 @@ class Server
 		void	listenSocket();
 		int		acceptConnection();
 		void	eventLoop();
-		Client* getClient(int fd);
 		void	recieveData(int clientFd);
-
+		
 		void run();
-
-
+		
+		// getters and setters
+		void	addClient(int fd, Client* client);
+		Client* getClient(int fd);
 };
 
 #endif

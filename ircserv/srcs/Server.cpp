@@ -42,6 +42,20 @@ Server &Server::operator=(const Server &other)
 	return *this;
 }
 
+// getters and setters
+Client* Server::getClient(int fd)
+{
+	std::map<int, Client*>::iterator it = _clients.find(fd);
+	if (it != _clients.end())
+		return it->second;
+	return NULL;
+}
+
+void	Server::addClient(int fd, Client* client)
+{
+	_clients[fd] = client;
+}
+
 // Socket operations
 
 // Initialize socket here (e.g., using socket() system call)
@@ -94,21 +108,11 @@ int Server::acceptConnection()
 		exit(1);
 	}
 
-	std::cout << inet_ntoa(cli_addr.sin_addr) << "\n";
-	std::cout << ntohs(cli_addr.sin_port) << "\n";
+	std::cout << "New client connected: " << inet_ntoa(cli_addr.sin_addr) << "\n";
+	std::cout << "With Port: " << ntohs(cli_addr.sin_port) << "\n";
 
-	_clients[clientFd] = new Client(clientFd);
+	addClient(clientFd, new Client(clientFd));
 	return clientFd;
-}
-
-// geters
-Client* Server::getClient(int fd)
-{
-	std::map<int, Client*>::iterator it = _clients.find(fd);
-	if (it != _clients.end())
-		return it->second;
-	return NULL;
-	
 }
 
 void Server::recieveData(int clientFd)
@@ -121,7 +125,6 @@ void Server::recieveData(int clientFd)
 	{
 		size = recv(clientFd, buffer, sizeof(buffer), 0);
 		current_client->appendToReadBuf(buffer);
-
 		/* note
 		size ==0 : client closed connection (EOF)
 		-> close that fd, clean up client's data
@@ -170,8 +173,6 @@ void Server::eventLoop()
 		{
 			if (_pfds[i].revents & POLLIN)
 			{
-				if (_pfds[0].revents & POLLIN)
-					std::cout << "revert of the server changed!\n";
 				if (_pfds[i].fd == _sockfd)
 				{
 					int clientFd = acceptConnection();
