@@ -132,12 +132,18 @@ void Server::receiveData(int clientFd)
 		size ==-1 : err occurred, in non-blocking mode, 
 		if errno = EAGAIN or EWOULDBLOCK, means no data to read, not a fatal err
 		*/
-		if (size <= 0)
+		if (size == 0)
 		{
 			// Handle client disconnection
 			std::cout << "Client disconnected: " << clientFd << std::endl;
 			close(clientFd);
+			delete current_client;
 			_clients.erase(clientFd);
+			break;
+		}
+		else if (size < 0)
+		{
+			std::cerr << "Error receiving data from client " << clientFd << std::endl;
 			break;
 		}
 		else
