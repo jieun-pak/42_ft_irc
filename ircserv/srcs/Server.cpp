@@ -115,11 +115,11 @@ int Server::acceptConnection()
 	return clientFd;
 }
 
-void Server::recieveData(int clientFd)
+void Server::receiveData(int clientFd)
 {
 	char buffer[512];
 	Client* current_client = getClient(clientFd);
-	size_t size = 0;
+	ssize_t size = 0;
 
 	while (true)
 	{
@@ -130,7 +130,7 @@ void Server::recieveData(int clientFd)
 		-> close that fd, clean up client's data
 
 		size ==-1 : err occurred, in non-blocking mode, 
-		if errno = EAGAIN or EWOULDBLOCK, means no date to read, not a fatal err
+		if errno = EAGAIN or EWOULDBLOCK, means no data to read, not a fatal err
 		*/
 		if (size <= 0)
 		{
