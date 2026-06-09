@@ -13,6 +13,7 @@
 #include <fcntl.h>
 #include "Client.hpp"
 #include <arpa/inet.h>
+#include <cerrno>
 
 class Channel;
 
@@ -38,12 +39,14 @@ class Server
 		void	listenSocket();
 		int		acceptConnection();
 		void	eventLoop();
-		void	recieveData(int clientFd);
+		void	receiveData(int clientFd);
 		
 		void run();
 		
 		// getters and setters
 		void	addClient(int fd, Client* client);
+		void	deleteClient(int fd);
+		void	removeClientFromPoll(int fd);
 		Client* getClient(int fd);
 };
 

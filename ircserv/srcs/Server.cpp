@@ -56,6 +56,28 @@ void	Server::addClient(int fd, Client* client)
 	_clients[fd] = client;
 }
 
+void	Server::deleteClient(int fd)
+{
+	std::map<int, Client*>::iterator it = _clients.find(fd);
+	if (it != _clients.end())
+	{
+		delete it->second;
+		_clients.erase(it);
+	}
+}
+
+void Server::removeClientFromPoll(int fd)
+{
+	for (std::vector<struct pollfd>::iterator it = _pfds.begin(); it != _pfds.end(); ++it)
+	{
+		if (it->fd == fd)
+		{
+			_pfds.erase(it);
+			break;
+		}
+	}
+}
+
 // Socket operations
 
 // Initialize socket here (e.g., using socket() system call)
@@ -119,40 +141,62 @@ void Server::receiveData(int clientFd)
 {
 	char buffer[512];
 	Client* current_client = getClient(clientFd);
-	ssize_t size = 0;
+	if (!current_client)
+	{
+		std::cerr << "Client not found for fd: " << clientFd << std::endl;
+		return;
+	}
+	
+	ssize_t size;
 
 	while (true)
 	{
 		size = recv(clientFd, buffer, sizeof(buffer), 0);
 		current_client->appendToReadBuf(buffer, size);
 		/* note
+		size > 0 : data received, append to client's read buffer
+			-> check if there are complete lines (ending with \r\n) in the buffer
+			-> if yes, extract those lines and process them as IRC commands
+
 		size ==0 : client closed connection (EOF)
 		-> close that fd, clean up client's data
 
 		size ==-1 : err occurred, in non-blocking mode, 
 		if errno = EAGAIN or EWOULDBLOCK, means no data to read, not a fatal err
 		*/
-		if (size == 0)
+		if (size > 0)
+		{
+			std::cout << "Received data from client " << clientFd << ": " << std::string(buffer, size) << std::endl;
+			current_client->appendToReadBuf(buffer, size);
+
+			std::vector<std::string> lines = current_client->extractLines();
+			for (size_t i = 0; i < lines.size(); i++)
+			{
+				std::cout << "Extracted line from client " << clientFd << ": " << lines[i] << std::endl;
+			}
+			continue; // keep reading until no more data (size <= 0)
+		}
+		else if (size == 0)
 		{
 			// Handle client disconnection
 			std::cout << "Client disconnected: " << clientFd << std::endl;
 			close(clientFd);
-			delete current_client;
-			_clients.erase(clientFd);
+
+			// delete client object and remove from clients map
+			deleteClient(clientFd);
+			removeClientFromPoll(clientFd); // You need to implement this function to remove the client from the _pfds vector
 			break;
 		}
-		else if (size < 0)
+		else // size == -1
 		{
+			if (errno == EAGAIN || errno == EWOULDBLOCK)
+				break; 	// No more data to read, not a fatal error, so just break out of the loop and wait for the next event
+			// else, it's a real error
 			std::cerr << "Error receiving data from client " << clientFd << std::endl;
+			close(clientFd);
+			deleteClient(clientFd);
+			removeClientFromPoll(clientFd);
 			break;
-		}
-		else
-		{
-			std::vector<std::string> lines = current_client->extractLines();
-			for (size_t i = 0; i < lines.size(); i++)
-			{
-				std::cout << "Received from client " << clientFd << ": " << lines[i] << std::endl;
-			}
 		}
 	}
 }
