@@ -184,11 +184,11 @@ void Server::eventLoop()
 				else
 				{
 					//call function handling reading data 
+					recieveData(_pfds[i].fd);
 				}
 			}
 		}
 	}
-}
 }
 
 void Server::run()

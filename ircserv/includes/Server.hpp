@@ -39,6 +39,7 @@ class Server
 		int		acceptConnection();
 		void	eventLoop();
 		Client* getClient(int fd);
+		void	recieveData(int clientFd);
 
 		void run();
 
