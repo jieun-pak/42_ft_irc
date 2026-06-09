@@ -124,7 +124,7 @@ void Server::receiveData(int clientFd)
 	while (true)
 	{
 		size = recv(clientFd, buffer, sizeof(buffer), 0);
-		current_client->appendToReadBuf(buffer);
+		current_client->appendToReadBuf(buffer, size);
 		/* note
 		size ==0 : client closed connection (EOF)
 		-> close that fd, clean up client's data

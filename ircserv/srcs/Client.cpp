@@ -24,9 +24,9 @@ int Client::getFd() const
 
 
 // methods
-void Client::appendToReadBuf(const std::string &data)
+void Client::appendToReadBuf(const std::string &data, size_t len)
 {
-	_readBuf += data;
+	_readBuf += data.substr(0, len);
 }
 
 std::vector<std::string> Client::extractLines()

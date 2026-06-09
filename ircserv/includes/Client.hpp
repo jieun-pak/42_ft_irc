@@ -17,7 +17,7 @@ class Client
 		Client &operator=(const Client &other);
 
 		int							getFd() const;
-		void						appendToReadBuf(const std::string &data);
+		void						appendToReadBuf(const std::string &data, size_t len);
 		std::vector<std::string>	extractLines();
 		
 };
