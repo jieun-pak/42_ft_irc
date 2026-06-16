@@ -1,5 +1,12 @@
 #include "../includes/Client.hpp"
 
+// constructor of Message struct
+Message::Message(const std::string &cmd, const std::vector<std::string> &params) : command(cmd), params(params) {}
+const std::string &Message::getCommand() const
+{
+	return command;
+}
+
 
 // constructors
 Client::Client(int fd) : _fd(fd) {}

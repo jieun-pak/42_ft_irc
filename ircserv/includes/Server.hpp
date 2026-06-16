@@ -28,6 +28,24 @@ class Server
 		std::map<int, Client*> _clients;
 		std::map<std::string, Channel*> _channels;
 
+		// Helper functions
+		Message		parse(const std::string& line);
+
+		enum CommandType
+    	{
+    	    CMD_UNKNOWN,
+    	    CMD_PASS,
+    	    CMD_NICK,
+    	    CMD_USER,
+    	    CMD_JOIN,
+    	    CMD_PART,
+    	    CMD_PRIVMSG,
+    	    CMD_QUIT
+    	};
+
+    	CommandType getCommandType(const std::string& command);
+		void 		executeCommand(const Message& msg, int clientFd);
+
 	public:
 		Server(int port, const std::string &password);
 		~Server();
