@@ -208,7 +208,7 @@ void	Server::executeCommand(const Message& msg, int clientFd)
 		std::cout << "Received PRIVMSG command from client " << clientFd << std::endl;
 		break;
 	case CMD_QUIT:
-		std::cout << "Received QUIT command from client " << clientFd << std::endl;
+		std::cout << "Received QUIT command from client " << clientFd << std::endl; 
 		break;
 	
 	default:
@@ -231,7 +231,6 @@ void Server::receiveData(int clientFd)
 	while (true)
 	{
 		size = recv(clientFd, buffer, sizeof(buffer), 0);
-		current_client->appendToReadBuf(buffer, size);
 		/* note
 		size > 0 : data received, append to client's read buffer
 			-> check if there are complete lines (ending with \r\n) in the buffer

@@ -7,7 +7,6 @@ const std::string &Message::getCommand() const
 	return command;
 }
 
-
 // constructors
 Client::Client(int fd) : _fd(fd) {}
 Client::~Client() {}
@@ -22,14 +21,13 @@ Client &Client::operator=(const Client &other)
 	return *this;
 }
 
-
 // getters
 int Client::getFd() const
 {
 	return _fd;
 }
 
-
+#include "../includes/Server.hpp"
 // methods
 void Client::appendToReadBuf(const std::string &data, size_t len)
 {
@@ -38,13 +36,18 @@ void Client::appendToReadBuf(const std::string &data, size_t len)
 
 std::vector<std::string> Client::extractLines()
 {
-	std::vector<std::string>		lines;
-	std::string::size_type			pos;
+	std::vector<std::string> lines;
+	std::string::size_type pos;
 
-	while ((pos = _readBuf.find("\r\n")) != std::string::npos)
+	while ((pos = _readBuf.find('\n')) != std::string::npos)
 	{
-		lines.push_back(_readBuf.substr(0, pos));
-		_readBuf.erase(0, pos + 2);
+		std::string line = _readBuf.substr(0, pos);
+
+		if (!line.empty() && line[line.size() - 1] == '\r')
+			line.erase(line.size() - 1);
+
+		lines.push_back(line);
+		_readBuf.erase(0, pos + 1);
 	}
 	return lines;
 }
