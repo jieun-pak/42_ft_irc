@@ -137,6 +137,85 @@ int Server::acceptConnection()
 	return clientFd;
 }
 
+// Implementation for parsing IRC messages
+Message Server::parse(const std::string& line)
+{
+	std::string command;
+	std::vector<std::string> params;
+
+	size_t pos = line.find(' ');
+	if (pos != std::string::npos)
+	{
+		command = line.substr(0, pos);
+		std::string paramStr = line.substr(pos + 1);
+		size_t start = 0;
+		while ((pos = paramStr.find(' ', start)) != std::string::npos)
+		{
+			params.push_back(paramStr.substr(start, pos - start));
+			start = pos + 1;
+		}
+		if (start < paramStr.length())
+			params.push_back(paramStr.substr(start));
+	}
+	else
+	{
+		command = line; // No parameters, entire line is command
+	}
+
+	return Message(command, params);
+}
+
+Server::CommandType Server::getCommandType(const std::string& command)
+{
+	if (command == "PASS")
+		return CMD_PASS;
+	if (command == "NICK")
+		return CMD_NICK;
+	if (command == "USER")
+		return CMD_USER;
+	if (command == "JOIN")
+		return CMD_JOIN;
+	if (command == "PART")
+		return CMD_PART;
+	if (command == "PRIVMSG")
+		return CMD_PRIVMSG;
+	if (command == "QUIT")
+		return CMD_QUIT;
+	return CMD_UNKNOWN;
+}
+
+void	Server::executeCommand(const Message& msg, int clientFd)
+{
+
+	switch (getCommandType(msg.getCommand()))
+	{
+	case CMD_PASS:
+		std::cout << "Received PASS command from client " << clientFd << std::endl;
+		break;
+	case CMD_NICK:
+		std::cout << "Received NICK command from client " << clientFd << std::endl;
+		break;
+	case CMD_USER:
+		std::cout << "Received USER command from client " << clientFd << std::endl;
+		break;
+	case CMD_JOIN:
+		std::cout << "Received JOIN command from client " << clientFd << std::endl;
+		break;
+	case CMD_PART:
+		std::cout << "Received PART command from client " << clientFd << std::endl;
+		break;
+	case CMD_PRIVMSG:
+		std::cout << "Received PRIVMSG command from client " << clientFd << std::endl;
+		break;
+	case CMD_QUIT:
+		std::cout << "Received QUIT command from client " << clientFd << std::endl; 
+		break;
+	
+	default:
+		break;
+	}
+}
+
 void Server::receiveData(int clientFd)
 {
 	char buffer[512];
@@ -152,7 +231,6 @@ void Server::receiveData(int clientFd)
 	while (true)
 	{
 		size = recv(clientFd, buffer, sizeof(buffer), 0);
-		current_client->appendToReadBuf(buffer, size);
 		/* note
 		size > 0 : data received, append to client's read buffer
 			-> check if there are complete lines (ending with \r\n) in the buffer
@@ -170,9 +248,14 @@ void Server::receiveData(int clientFd)
 			current_client->appendToReadBuf(buffer, size);
 
 			std::vector<std::string> lines = current_client->extractLines();
-			for (size_t i = 0; i < lines.size(); i++)
+			for (size_t i = 0; i < lines.size(); ++i)
 			{
-				std::cout << "Extracted line from client " << clientFd << ": " << lines[i] << std::endl;
+				// debug print
+				std::cout << "Processing line from client " << clientFd << ": " << lines[i] << std::endl;
+
+				// parse message and execute command
+				Message msg = parse(lines[i]);
+				executeCommand(msg, clientFd);
 			}
 			continue; // keep reading until no more data (size <= 0)
 		}

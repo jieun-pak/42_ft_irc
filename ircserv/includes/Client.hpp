@@ -4,6 +4,20 @@
 #include <string>
 #include <vector>
 
+// To save the msg coming from client.
+struct Message
+{
+    std::string command;
+    std::vector<std::string> params;
+	
+	// constructor
+	Message(const std::string &cmd, const std::vector<std::string> &params);
+
+	// getters and setters
+	const std::string &getCommand() const;
+
+};
+
 class Client
 {
 	private:
