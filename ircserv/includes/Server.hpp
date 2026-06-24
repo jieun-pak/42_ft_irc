@@ -31,6 +31,7 @@ class Server
 		// Helper functions
 		Message		parse(const std::string& line);
 
+		// CommandType enum and getCommandType function
 		enum CommandType
     	{
     	    CMD_UNKNOWN,
@@ -44,7 +45,15 @@ class Server
     	};
 
     	CommandType getCommandType(const std::string& command);
-		void 		executeCommand(const Message& msg, int clientFd);
+		
+		// command handlers
+		void	handlePass(const Message& msg, int clientFd);
+		void	handleNick(const Message& msg, int clientFd);
+		void	handleUser(const Message& msg, int clientFd);
+		void	handleJoin(const Message& msg, int clientFd);
+		void	handlePart(const Message& msg, int clientFd);
+		void	handlePrivmsg(const Message& msg, int clientFd);
+		void	handleQuit(const Message& msg, int clientFd);
 
 	public:
 		Server(int port, const std::string &password);
@@ -66,6 +75,8 @@ class Server
 		void	deleteClient(int fd);
 		void	removeClientFromPoll(int fd);
 		Client* getClient(int fd);
+
+		void 	executeCommand(const Message& msg, int clientFd);
 };
 
 #endif

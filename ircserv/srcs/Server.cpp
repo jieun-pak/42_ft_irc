@@ -184,31 +184,33 @@ Server::CommandType Server::getCommandType(const std::string& command)
 	return CMD_UNKNOWN;
 }
 
+// Command handlers are in a separate file (ServerCommandHandlers.cpp) to keep the Server class clean and focused on its core responsibilities.
+
 void	Server::executeCommand(const Message& msg, int clientFd)
 {
 
 	switch (getCommandType(msg.getCommand()))
 	{
 	case CMD_PASS:
-		std::cout << "Received PASS command from client " << clientFd << std::endl;
+		handlePass(msg, clientFd);
 		break;
 	case CMD_NICK:
-		std::cout << "Received NICK command from client " << clientFd << std::endl;
+		handleNick(msg, clientFd);
 		break;
 	case CMD_USER:
-		std::cout << "Received USER command from client " << clientFd << std::endl;
+		handleUser(msg, clientFd);
 		break;
 	case CMD_JOIN:
-		std::cout << "Received JOIN command from client " << clientFd << std::endl;
+		handleJoin(msg, clientFd);
 		break;
 	case CMD_PART:
-		std::cout << "Received PART command from client " << clientFd << std::endl;
+		handlePart(msg, clientFd);
 		break;
 	case CMD_PRIVMSG:
-		std::cout << "Received PRIVMSG command from client " << clientFd << std::endl;
+		handlePrivmsg(msg, clientFd);
 		break;
 	case CMD_QUIT:
-		std::cout << "Received QUIT command from client " << clientFd << std::endl; 
+		handleQuit(msg, clientFd);
 		break;
 	
 	default:
