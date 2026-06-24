@@ -21,8 +21,16 @@ struct Message
 class Client
 {
 	private:
-		int			_fd;
-		std::string	_readBuf;
+		int				_fd;
+		std::string		_readBuf;
+		bool			_passwordAuthenticated;
+		std::string		_nickname;
+		std::string		_username;
+		std::string		_realname;
+		bool			_isUserReceived;
+
+		bool 						isValidNickname(const std::string &nickname);
+		bool 						isNicknameInUse(const std::string &nickname);
 
 	public:
 		Client(int fd);
@@ -33,7 +41,21 @@ class Client
 		int							getFd() const;
 		void						appendToReadBuf(const std::string &data, size_t len);
 		std::vector<std::string>	extractLines();
-		
+
+		bool						isPasswordAuthenticated() const;
+		void						setPasswordAuthenticated(bool authenticated);
+
+		std::string					getNickname() const;
+		void						setNickname(const std::string &nickname);
+
+		//std::string				getUsername() const;
+		void						setUsername(const std::string &username);
+
+		//std::string				getRealname() const;
+		void						setRealname(const std::string &realname);
+
+		bool						isUserReceived() const;
+		void						setUserReceived(bool received);
 };
 
 #endif
