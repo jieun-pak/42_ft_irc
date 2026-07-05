@@ -1,4 +1,5 @@
 #include "../includes/Server.hpp"
+#include "../includes/Client.hpp"
 
 // constructor, destructor, copy constructor, assignment operator (Orthodox Canonical Form)
 //TODO: habib check Q. do we need _client?
@@ -76,6 +77,39 @@ void Server::removeClientFromPoll(int fd)
 			break;
 		}
 	}
+}
+
+// Helper function to check if a nickname is valid
+bool Server::isValidNickname(const std::string &nickname)
+{
+	// Check if the nickname is empty or too long
+	if (nickname.empty() || nickname.length() > 9)
+		return false;
+
+	// Check if the first character is a letter
+	if (!isalpha(nickname[0]))
+		return false;
+
+	// Check if all characters are valid (letters, digits, or special characters)
+	for (size_t i = 0; i < nickname.length(); ++i)
+	{
+		char c = nickname[i];
+		if (!isalnum(c) && c != '-' && c != '_' && c != '[' && c != ']' && c != '\\' && c != '`' && c != '^' && c != '{' && c != '}')
+			return false;
+	}
+
+	return true;
+}
+
+bool Server::isNicknameInUse(const std::string &nickname)
+{
+	// Check if the nickname is already in use by any client
+	for (std::map<int, Client *>::iterator it = _clients.begin(); it != _clients.end(); ++it)
+	{
+		if (it->second && it->second->getNickname() == nickname)
+			return true;
+	}
+	return false;
 }
 
 // Socket operations
@@ -334,5 +368,3 @@ void Server::run()
 	listenSocket();
 	eventLoop();
 }
-
-// TODO: recv and parse IRC commands from clients, handle client disconnections, manage channels, etc.

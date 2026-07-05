@@ -15,6 +15,7 @@ struct Message
 
 	// getters and setters
 	const std::string &getCommand() const;
+	std::vector<std::string> getParams() const;
 
 };
 
@@ -23,14 +24,11 @@ class Client
 	private:
 		int				_fd;
 		std::string		_readBuf;
-		bool			_passwordAuthenticated;
 		std::string		_nickname;
 		std::string		_username;
 		std::string		_realname;
+		bool			_passwordAuthenticated;
 		bool			_isUserReceived;
-
-		bool 						isValidNickname(const std::string &nickname);
-		bool 						isNicknameInUse(const std::string &nickname);
 
 	public:
 		Client(int fd);

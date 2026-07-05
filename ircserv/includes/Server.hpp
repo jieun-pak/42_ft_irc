@@ -17,6 +17,10 @@
 
 class Channel;
 
+class Client;
+
+struct Message;
+
 class Server
 {
 	private:
@@ -54,6 +58,9 @@ class Server
 		void	handlePart(const Message& msg, int clientFd);
 		void	handlePrivmsg(const Message& msg, int clientFd);
 		void	handleQuit(const Message& msg, int clientFd);
+
+		bool	isValidNickname(const std::string &nickname);
+		bool	isNicknameInUse(const std::string &nickname);
 
 	public:
 		Server(int port, const std::string &password);

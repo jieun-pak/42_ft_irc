@@ -79,11 +79,11 @@ void Server::handleUser(const Message& msg, int clientFd)
     {
 		client->setUsername(msg.getParams()[0]);
 		client->setRealname(msg.getParams()[3]);
+		// 3. Mark USER as received (you can set a flag in the Client class if needed)
+		client->setUserReceived(true);
     }
-    // 3. Mark USER as received (you can set a flag in the Client class if needed)
-    client->setUserReceived(true);
 
-    // 4. Check if registration is now complete
+		// 4. Check if registration is now complete
 	if (client && client->isPasswordAuthenticated() && !client->getNickname().empty() && client->isUserReceived())
 	{
 		// Registration is complete, you can send a welcome message or perform other actions
@@ -94,6 +94,8 @@ void Server::handleUser(const Message& msg, int clientFd)
 
 void Server::handleJoin(const Message& msg, int clientFd)
 {
+	(void)msg;
+	(void)clientFd;
 	// 1. Find or create channel
     // 2. Check channel restrictions
     // 3. Add client to channel
@@ -103,6 +105,8 @@ void Server::handleJoin(const Message& msg, int clientFd)
 
 void Server::handlePart(const Message& msg, int clientFd)
 {
+	(void)msg;
+	(void)clientFd;
 	// 1. Check channel exists
     // 2. Check client is in channel
     // 3. Remove client from channel
@@ -111,6 +115,8 @@ void Server::handlePart(const Message& msg, int clientFd)
 
 void Server::handlePrivmsg(const Message& msg, int clientFd)
 {
+	(void)msg;
+	(void)clientFd;
 	// 1. Validate target and text
     // 2. Find target client/channel
     // 3. Forward message
@@ -118,6 +124,8 @@ void Server::handlePrivmsg(const Message& msg, int clientFd)
 
 void Server::handleQuit(const Message& msg, int clientFd)
 {
+	(void)msg;
+	(void)clientFd;
 	// 1. Notify all joined channels
     // 2. Remove client from channels
     // 3. Close socket

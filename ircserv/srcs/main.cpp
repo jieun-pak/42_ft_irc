@@ -16,12 +16,14 @@ int	main(int argc, char **argv)
 		return 1;
 	}
 
+	// TODO: validate password (e.g., check length, allowed characters, etc.)
 	std::string password(argv[2]);
 	if (password.empty())
 	{
 		std::cerr << "Password cannot be empty" << std::endl;
 		return 1;
 	}
+
 	signal(SIGINT, signal_handler);
 	Server server(port, password);
 	server.run();
