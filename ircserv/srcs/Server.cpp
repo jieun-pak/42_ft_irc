@@ -91,7 +91,7 @@ void Server::initSocket()
 	}
 }
 
-// Bind socket to the specified port (e.g., using bind() system call)
+// Bind server socket to the specified port (e.g., using bind() system call)
 void Server::bindSocket()
 {
 	struct sockaddr_in serv_addr;
@@ -182,6 +182,33 @@ Server::CommandType Server::getCommandType(const std::string& command)
 	if (command == "QUIT")
 		return CMD_QUIT;
 	return CMD_UNKNOWN;
+}
+
+bool Server::isValidNickname(const std::string &nickname)
+{
+	if (nickname.empty())
+		return false;
+
+	if (!std::isalpha(nickname[0]) && !std::ispunct(nickname[0]))
+		return false;
+
+	for (size_t i = 1; i < nickname.size(); ++i)
+	{
+		if (!std::isalnum(nickname[i]) && !std::ispunct(nickname[i]))
+			return false;
+	}
+
+	return true;
+}
+
+bool Server::isNicknameInUse(const std::string &nickname, int excludeFd)
+{
+	for (std::map<int, Client *>::iterator it = _clients.begin(); it != _clients.end(); ++it)
+	{
+		if (it->second && it->first != excludeFd && it->second->getNickname() == nickname)
+			return true;
+	}
+	return false;
 }
 
 // Command handlers are in a separate file (ServerCommandHandlers.cpp) to keep the Server class clean and focused on its core responsibilities.
@@ -288,7 +315,7 @@ void Server::receiveData(int clientFd)
 
 void Server::eventLoop()
 {
-	// _pfds[0] = for server socket .. _pfds[1]
+	// _pfds[0] = for server socket
 	struct pollfd serverPfd;
 	serverPfd.fd = _sockfd;
 	serverPfd.events = POLLIN;
@@ -310,6 +337,7 @@ void Server::eventLoop()
 			{
 				if (_pfds[i].fd == _sockfd)
 				{
+					// saving client sockets from _pfds[1...n]
 					int clientFd = acceptConnection();
 					struct pollfd clientPfd;
 					clientPfd.fd = clientFd;

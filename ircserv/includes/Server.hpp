@@ -14,6 +14,7 @@
 #include "Client.hpp"
 #include <arpa/inet.h>
 #include <cerrno>
+#include <cctype>
 
 class Channel;
 
@@ -23,6 +24,7 @@ class Server
 		Server();
 		int _sockfd;
 		int _port;
+		
 		std::string _password;
 		std::vector<struct pollfd> _pfds;
 		std::map<int, Client*> _clients;
@@ -45,7 +47,10 @@ class Server
     	};
 
     	CommandType getCommandType(const std::string& command);
-		
+
+		bool	isValidNickname(const std::string &nickname);
+		bool	isNicknameInUse(const std::string &nickname, int excludeFd);
+
 		// command handlers
 		void	handlePass(const Message& msg, int clientFd);
 		void	handleNick(const Message& msg, int clientFd);

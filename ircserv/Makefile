@@ -8,6 +8,7 @@ NAME	= ircserv
 # sources
 SRCS	=	srcs/main.cpp \
 			srcs/Server.cpp \
+			srcs/ServerComandHandlers.cpp \
 			srcs/Client.cpp \
 			srcs/signal.cpp
 # 			TODO: UPDATE
