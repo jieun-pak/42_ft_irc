@@ -10,11 +10,10 @@ SRCS	=	srcs/main.cpp \
 			srcs/Server.cpp \
 			srcs/ServerComandHandlers.cpp \
 			srcs/Client.cpp \
-			srcs/signal.cpp
+			srcs/signal.cpp \
+ 			srcs/Channel.cpp \
 # 			TODO: UPDATE
 # 			srcs/Authentication.cpp \
-# 			srcs/Channel.cpp \
-# 			srcs/commands/...cpp
 
 # object
 OBJS = $(SRCS:.cpp=.o)
@@ -24,6 +23,7 @@ OBJS = $(SRCS:.cpp=.o)
 HEADERS	=	includes/ft_irc.hpp \
 			includes/Server.hpp \
 			includes/Client.hpp \
+			includes/Channel.hpp \
 			includes/signal.hpp
 
 # default target

@@ -211,6 +211,23 @@ bool Server::isNicknameInUse(const std::string &nickname, int excludeFd)
 	return false;
 }
 
+bool Server::isValidChannelName(const std::string &channelName)
+{
+	if (channelName.empty())
+		return false;
+
+	if (channelName[0] != '#')
+		return false;
+
+	for (size_t i = 1; i < channelName.size(); ++i)
+	{
+		if (!std::isalnum(channelName[i]) && channelName[i] != '_')
+			return false;
+	}
+
+	return true;
+}
+
 // Command handlers are in a separate file (ServerCommandHandlers.cpp) to keep the Server class clean and focused on its core responsibilities.
 
 void	Server::executeCommand(const Message& msg, int clientFd)

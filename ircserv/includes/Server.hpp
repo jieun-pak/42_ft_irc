@@ -50,6 +50,7 @@ class Server
 
 		bool	isValidNickname(const std::string &nickname);
 		bool	isNicknameInUse(const std::string &nickname, int excludeFd);
+		bool	isValidChannelName(const std::string &channelName);
 
 		// command handlers
 		void	handlePass(const Message& msg, int clientFd);
