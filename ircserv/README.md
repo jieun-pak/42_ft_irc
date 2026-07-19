@@ -1,3 +1,11 @@
+# ft_irc — dev README (working doc)
+
+Team working doc for the `ircserv` implementation. Detailed Phase 1 design/decisions: [plan-phase1.md](plan-phase1.md).
+
+> ⚠️ Subject Chapter V requires a `README.md` **at the repo root** (italic first line
+> "*This project has been created as part of the 42 curriculum by \<login1\>, \<login2\>*",
+> plus **Description / Instructions / Resources** sections, in English). That file doesn't exist yet — see Defense checklist below.
+
 # General implementation plan
 
 - [x] Phase 1 — Skeleton + server loop (socket → poll() → accept)
@@ -5,29 +13,32 @@
 - [ ] Phase 3 — Channels + messaging (JOIN / PRIVMSG / PART / QUIT)
 - [ ] Phase 4 — Operator commands (KICK / INVITE / TOPIC / MODE i,t,k,o,l)
 
-> `[x]` done 
-`[~]` in progress / currently broken `[ ]` not started
+> `[x]` done · `[~]` in progress · `[ ]` not started
 
 ## TODOs
 
-### Phase 1 — Skeleton + server loop
+### Phase 1 — Skeleton + server loop (details & rationale: [plan-phase1.md](plan-phase1.md))
 - [x] `socket()` / `bind()` / `listen()` / `accept()`
 - [x] single `poll()` event loop (one thread, no fork)
 - [x] per-client read buffer + line extraction (handles `\r\n` fragmentation from `nc -C`)
 - [x] SIGINT handler sets a shutdown flag
-- [ ] actually check the shutdown flag in `eventLoop()` and break + clean up
-- [ ] confirm `fcntl(fd, F_SETFL, O_NONBLOCK)` is set on sockets (subject requires non-blocking I/O)
-- [ ] `setsockopt(SO_REUSEADDR)` on the listening socket (avoids `bind()` failing for ~60s after restart)
+- [ ] `fcntl(fd, F_SETFL, O_NONBLOCK)` on listen fd + every client fd — **subject requires it; not set anywhere yet**
+- [ ] route `send()` through the poll loop (per-client out-buffer + `POLLOUT`) — subject: any send **without poll() = grade 0**
+- [ ] fix: `accept()` failure calls `exit(1)` → one bad accept kills the whole server (subject: crash/quit = grade 0)
+- [ ] handle `POLLHUP` / `POLLERR` / `POLLNVAL` in `eventLoop()`, not only `POLLIN`
+- [ ] safe fd removal: `receiveData()` erases from `_pfds` while `eventLoop()` iterates it (skips entries)
+- [ ] actually check the shutdown flag in `eventLoop()` (+ handle `poll()` returning `-1` with `errno == EINTR`)
+- [ ] `setsockopt(SO_REUSEADDR)` on the listening socket (avoids `bind()` failing ~60s after restart)
 
 ### Phase 2 — Registration (PASS / NICK / USER)
 - [x] `handlePass` / `handleNick` / `handleUser` drafted with real logic
 - [x] make it compile
 - [ ] reply with real IRC numerics instead of `std::cerr`/ad-hoc strings:
       `001 RPL_WELCOME`, `433 ERR_NICKNAMEINUSE`, `464 ERR_PASSWDMISMATCH`,
-      `451 ERR_NOTREGISTERED`, `461 ERR_NEEDMOREPARAMS`
+      `451 ERR_NOTREGISTERED`, `461 ERR_NEEDMOREPARAMS`, `421 ERR_UNKNOWNCOMMAND`
 - [ ] gate all non-registration commands behind "is this client registered yet?"
 - [ ] `Server::parse()` must support the trailing `:` param (rest-of-line-as-one-arg) —
-      right now every param is space-split, which breaks multi-word `PRIVMSG` text
+      right now `USER jin 0 * :Jin Park` stores realname as `":Jin"` and drops `"Park"`
 
 ### Phase 3 — Channels + messaging (not started)
 - [ ] `Channel` class: name, members, ops, topic, key, user limit, mode flags
@@ -47,36 +58,111 @@
 
 # How to Test
 
-### Build
+## What works today (state of `main` + local fixes)
+
+| Behavior | Status |
+|---|---|
+| `make` / `make re` clean build (C++98, `-Wall -Wextra -Werror`) | ✅ |
+| Accepts one or many `nc` clients through one `poll()` | ✅ |
+| Buffers partial input, splits on `\r\n` / `\n` | ✅ |
+| `PASS` → `NICK` → `USER` → welcome text | ✅ (plain text, **not** numeric `001` yet) |
+| Errors (wrong pass, dup nick) | ⚠️ printed on **server** stderr only — client gets nothing |
+| Unknown command | ⚠️ silently ignored (no `421` yet) |
+| Real IRC client (irssi) full registration | ❌ irssi waits for numeric `001` — not sent yet |
+| `JOIN` / `PRIVMSG` / `PART` / `QUIT` | ❌ empty stubs |
+
+## 1. Build checks
 ```bash
-make
+make            # must compile with -Wall -Wextra -Werror -std=c++98, no errors
+make            # run again: must do nothing (subject: no unnecessary relinking)
+make re         # full rebuild from scratch
 ```
 
-### Terminal 1 — run the server
+## 2. Start the server
 ```bash
 ./ircserv 6667 mypassword
 ```
-
-### Terminal 2 — connect as a client (nc)
+Also test bad args — the server must refuse and not crash:
 ```bash
+./ircserv                 # usage message
+./ircserv 99999 pw        # invalid port
+./ircserv 6667 ""         # empty password
+```
+> Note: until `SO_REUSEADDR` is added, restarting right after Ctrl+C can fail with
+> "Error binding socket" for ~60s (kernel TIME_WAIT). Wait or change port.
+
+## 3. Basic connection + multi-client
+```bash
+# Terminal 2
+nc localhost 6667
+# Terminal 3 (same time — server must serve both without blocking)
 nc localhost 6667
 ```
-Then type IRC commands manually:
+Type anything; server terminal must log `Received data ...` / `Processing line ...`
+per connected client, each with its own fd.
+
+## 4. Registration — happy path
+Manually (Terminal 2):
 ```
 PASS mypassword
 NICK jin
 USER jin 0 * :Jin Park
 ```
+Expected reply on the client: `Welcome to the IRC server, jin!`
 
-### Terminal 3 — second client (to test multi-client)
+Scripted one-liner (real TCP, exercises the line-splitting too since all 3 commands
+arrive as one packet):
 ```bash
-nc localhost 6667
-PASS mypassword
-NICK bob
-USER bob 0 * :Bob
+printf "PASS mypassword\r\nNICK jin\r\nUSER jin 0 * :Jin Park\r\n" | nc -q1 localhost 6667
+```
+(`printf` not `echo`: reliably emits the `\r\n` CRLF endings IRC requires.
+`-q1`: nc exits 1s after stdin ends instead of hanging.)
+
+## 5. Registration — error paths
+```bash
+# wrong password → currently: error on server stderr, client sees nothing (numeric 464 is TODO)
+printf "PASS wrongpw\r\nNICK jin\r\nUSER jin 0 * :Jin\r\n" | nc -q1 localhost 6667
+
+# duplicate nick → open two clients, send same NICK; second must be rejected (433 is TODO)
+# missing params → "PASS", "NICK", "USER x" alone must not crash the server
 ```
 
-### Notes
-- `nc` (netcat) sends raw text — each line is one IRC message
-- Use `Ctrl+C` to disconnect a client
-- Use `Ctrl+C` in Terminal 1 to stop the server
+## 6. Fragmentation test (subject IV.3 — the `ctrl+D` test)
+```bash
+nc -C 127.0.0.1 6667
+```
+Type `com`, press **Ctrl+D** (flushes without newline), type `man`, **Ctrl+D**,
+type `d`, press **Enter**. The server must aggregate the pieces and process one
+single `command` line only when the line ending arrives. Works because each
+`Client` owns `_readBuf` and lines are only extracted on `\n`.
+
+## 7. Disconnect handling
+- **Ctrl+C a client**: server must log `Client disconnected`, remove its fd, keep serving others.
+- Reconnect afterwards: must get a fresh fd, everything still works.
+- Kill/restart clients repeatedly: server must never crash or leak fds.
+
+## 8. Reference client (irssi)
+```bash
+irssi
+/connect 127.0.0.1 6667 mypassword jin
+```
+**Current limitation:** irssi will connect but hang at "waiting for server" —
+it requires the numeric `001` welcome (Phase 2 TODO). Re-test after numerics land;
+a working reference client is a hard subject requirement for evaluation.
+
+## 9. Leaks / cleanup
+```bash
+valgrind --leak-check=full ./ircserv 6667 pw   # connect/disconnect a few clients, Ctrl+C
+ps aux | grep ircserv | grep -v grep           # after tests: no leftover server process
+```
+
+---
+
+# Defense checklist (from subject v10.0)
+- [ ] `README.md` at **repo root**: italic first line with logins, Description, Instructions, Resources (incl. how AI was used) — English
+- [ ] stop tracking the compiled binary `ircserv/ircserv` (it's in git; add to `.gitignore`, `git rm --cached`)
+- [ ] pick and state the **reference client**; it must connect with zero errors
+- [ ] only allowed external functions used (see subject p.6); `fcntl` **only** as `fcntl(fd, F_SETFL, O_NONBLOCK)`
+- [ ] exactly **one** `poll()` handles everything — read *and* write; no fork, no threads
+- [ ] server never crashes / never quits unexpectedly (crash = grade 0)
+- [ ] be ready for a small live code modification during evaluation
