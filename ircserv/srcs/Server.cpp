@@ -324,8 +324,8 @@ void Server::eventLoop()
 
 	while (true)
 	{
-		int ready = poll(&_pfds[0], _pfds.size(), -1);
-		if (ready < 0)
+		int readyCount = poll(&_pfds[0], _pfds.size(), -1);
+		if (readyCount < 0)
 		{
 			std::cerr << "poll error" << std::endl;
 			break;

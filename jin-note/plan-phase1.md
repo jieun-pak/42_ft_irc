@@ -164,7 +164,87 @@ After these, Phase 1 is defensible on every subject bullet, and Phase 2
 
 ---
 
-## 5. Known Phase 2 items this phase deliberately leaves open
+## 5. Manual test walkthrough — 3 terminals (T1 = server, T2/T3 = nc clients)
+
+### Setup
+```bash
+# T1
+./ircserv 6667 sec
+# T2
+nc localhost 6667
+# T3
+nc localhost 6667
+```
+T1 must log two `New client connected` lines with two different ports (one per client).
+
+### A. What you can test with the CURRENT code
+
+**A1 — multi-client fairness (D1).**
+Type `hello` in T2. Then type `world` in T3 *without touching T2 again*.
+✅ T1 logs both lines, each tagged with its own fd. T3 is served while T2 sits idle.
+(Before D1 this could freeze: the old drain-loop blocked on T2's silent socket.)
+
+**A2 — registration happy path (D2 send path).**
+In T2, type the three lines:
+```
+PASS sec
+NICK jin
+USER jin 0 * :Jin Park
+```
+✅ T2 receives `Welcome to the IRC server, jin!` — this now travels
+`queueSend() → _writeBuf → POLLOUT → sendData()`, so it also proves the D2 pipeline.
+
+**A3 — duplicate nick (server-side only for now).**
+Register T2 as `jin` (A2). In T3: `PASS sec` then `NICK jin`.
+✅ T1 prints `Error: Nickname already in use.` — ⚠️ T3 sees *nothing* (numeric `433` is Phase 2).
+
+**A4 — wrong password.**
+In T3: `PASS wrongpw`.
+✅ T1 prints `Error: Incorrect password.` — ⚠️ T3 sees nothing (numeric `464` is Phase 2).
+
+**A5 — fragmentation (subject IV.3).**
+Close T2 and reconnect with `nc -C 127.0.0.1 6667`.
+Type `PA` then **Ctrl+D**, `SS se` then **Ctrl+D**, `c` then **Enter**.
+✅ T1 logs the recv fragments separately but processes exactly one line: `PASS sec`.
+
+**A6 — client disconnect isolation (D4/D5).**
+**Ctrl+C in T2.**
+✅ T1 logs `Client disconnected: <fd>` (or `(hangup)`), keeps running.
+✅ T3 still works: type a line, T1 still processes it. Reconnect T2 → gets a fresh fd.
+
+**A7 — clean server shutdown + instant restart (D6 + D7).**
+With clients connected, **Ctrl+C in T1**.
+✅ T1 prints `Server shutting down` (NOT `poll error`) and exits.
+Immediately rerun `./ircserv 6667 sec`.
+✅ Bind succeeds right away (no more `Error binding socket` / 60s TIME_WAIT wait).
+
+**A8 — server never dies from client behavior (D4).**
+Spam-connect/disconnect from T2's shell:
+```bash
+for i in 1 2 3 4 5; do echo test | nc -q0 localhost 6667; done
+```
+✅ T1 logs a burst of connect/disconnect pairs and is still alive afterwards.
+
+**A9 — unknown commands.**
+In a registered T2, type `FOOBAR hello`.
+✅ T1 logs the line, nothing else happens (silently ignored — ⚠️ `421` reply is Phase 2).
+
+### B. What you can only test with FUTURE code (Phase 2+)
+
+- **B1 (Phase 2)** — A3/A4/A9 error cases answer *the client*: T3 sees
+  `433 ERR_NICKNAMEINUSE`, `464 ERR_PASSWDMISMATCH`, `421 ERR_UNKNOWNCOMMAND`.
+- **B2 (Phase 2)** — welcome becomes numeric `001`; **irssi** completes registration
+  (`irssi` → `/connect 127.0.0.1 6667 sec jin`) instead of hanging at "waiting".
+- **B3 (Phase 2)** — gating: sending `JOIN` before registering yields `451 ERR_NOTREGISTERED`.
+- **B4 (Phase 2)** — trailing param: `USER jin 0 * :Jin Park` stores realname `Jin Park`
+  (currently `:Jin`, with `Park` dropped).
+- **B5 (Phase 3)** — T2 and T3 both `JOIN #test`; `PRIVMSG #test :hi` from T2 appears in T3.
+- **B6 (Phase 3)** — direct message: T2 sends `PRIVMSG bob :hi`; only T3 (nick `bob`) receives it.
+- **B7 (Phase 4)** — T2 (first joiner = op) can `KICK`/`INVITE`/`TOPIC`/`MODE`; T3 (regular user) gets refused.
+
+---
+
+## 6. Known Phase 2 items this phase deliberately leaves open
 
 - Numeric replies (`001/433/451/461/464/421`) — blocked on D2's `queueSend()`.
 - `parse()` trailing `:` parameter (`USER jin 0 * :Jin Park` currently stores
