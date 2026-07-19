@@ -3,7 +3,7 @@ CC = c++
 CFLAGS = -Wall -Wextra -Werror -std=c++98
 
 # target executable
-NAME	= ircserv
+NAME	= ircserver
 
 # sources
 SRCS	=	srcs/main.cpp \

@@ -80,3 +80,27 @@ USER bob 0 * :Bob
 - `nc` (netcat) sends raw text — each line is one IRC message
 - Use `Ctrl+C` to disconnect a client
 - Use `Ctrl+C` in Terminal 1 to stop the server
+
+
+## Bugs
+- when a client is usint NICK command, other clients can not communicat with the server.
+- seg fault in this situation:
+```
+% ./ircserv 6667 1234
+New client connected: 127.0.0.1
+With Port: 48666
+Received data from client 4: JOIN #general
+
+Processing line from client 4: JOIN #general
+Error: Client must be authenticated before joining a channel.
+Received data from client 4: NICK habib
+
+Processing line from client 4: NICK habib
+Received data from client 4: PASS 1234
+
+Processing line from client 4: PASS 1234
+Received data from client 4: JOIN #general
+
+Processing line from client 4: JOIN #general
+zsh: segmentation fault (core dumped)  ./ircserv 6667 1234
+```

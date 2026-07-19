@@ -61,6 +61,10 @@ class Server
 		void	handlePrivmsg(const Message& msg, int clientFd);
 		void	handleQuit(const Message& msg, int clientFd);
 
+		// JOIN command helpers
+		void	sendTopic(Channel* channel, Client* client);
+		void	sendNamesList(Channel* channel, Client* client);
+
 	public:
 		Server(int port, const std::string &password);
 		~Server();

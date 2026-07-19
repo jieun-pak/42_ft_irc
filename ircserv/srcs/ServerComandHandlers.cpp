@@ -95,6 +95,41 @@ void Server::handleUser(const Message &msg, int clientFd)
 	}
 }
 
+// JOIN command halpers
+void Server::sendTopic(Channel *channel, Client *client)
+{
+	if (channel->getTopic().empty())
+    {
+        // 331 RPL_NOTOPIC
+		std::string notopicMessage = "331 " + client->getNickname() + " " + channel->getName() + " :No topic is set\r\n";
+		send(client->getFd(), notopicMessage.c_str(), notopicMessage.size(), 0);
+	}
+	else
+	{
+		// 332 RPL_TOPIC
+		std::string topicMessage = "332 " + client->getNickname() + " " + channel->getName() + " :" + channel->getTopic() + "\r\n";
+		send(client->getFd(), topicMessage.c_str(), topicMessage.size(), 0);
+    }
+}
+
+void Server::sendNamesList(Channel *channel, Client *client)
+{
+	// Build a list of nicknames in the channel
+	std::string namesList;
+	for (std::vector<Client *>::const_iterator it = channel->getMembers().begin(); it != channel->getMembers().end(); ++it)
+	{
+		namesList += (*it)->getNickname() + " ";
+	}
+
+    // 353 RPL_NAMREPLY
+	std::string namereplyMessage = "353 " + client->getNickname() + " = " + channel->getName() + " :" + namesList + "\r\n";
+	send(client->getFd(), namereplyMessage.c_str(), namereplyMessage.size(), 0);
+
+    // 366 RPL_ENDOFNAMES
+	std::string endofnamesMessage = "366 " + client->getNickname() + " " + channel->getName() + " :End of /NAMES list\r\n";
+	send(client->getFd(), endofnamesMessage.c_str(), endofnamesMessage.size(), 0);
+}
+
 void Server::handleJoin(const Message &msg, int clientFd)
 {
 	(void)msg;
@@ -139,16 +174,23 @@ void Server::handleJoin(const Message &msg, int clientFd)
 		std::cerr << "Error: Client is already a member of channel " << channelName << std::endl;
 		return;
 	}
-	if (channel->getMembers().size() >= 10) // Example: max 10 members
+	if (channel->getMembers().size() >= Channel::MAX_MEMBERS) // Example: max 10 members
 	{
 		std::cerr << "Error: Channel " << channelName << " is full." << std::endl;
 		return;
 	}
+	//TODO: Implement invite only (+i)
+	//TODO: Implement password protected (+k)
+	//TODO: Implement user limit (+l)
+	//TODO: Implement banned users (+b)
 	// 3. Add client to channel
 	channel->addMember(client);
+	client->joinChannel(channelName);
 	// 4. TODO: Broadcast JOIN message
+	channel->broadcastMessage(":" + client->getNickname() + " JOIN " + channelName + "\r\n", client);
 	// 5. TODO: Send topic and names list
-
+	sendTopic(channel, client);
+	sendNamesList(channel, client);
 	// Debug print
 	std::cout << "Client " << client->getNickname() << " joined channel " << channelName << std::endl;
 }
