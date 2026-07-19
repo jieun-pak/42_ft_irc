@@ -23,6 +23,7 @@ int	main(int argc, char **argv)
 		return 1;
 	}
 	signal(SIGINT, signal_handler);
+	signal(SIGQUIT, signal_handler);
 	Server server(port, password);
 	server.run();
 

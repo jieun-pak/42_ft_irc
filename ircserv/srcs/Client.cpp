@@ -14,13 +14,14 @@ const std::vector<std::string> &Message::getParams() const
 // constructors
 Client::Client(int fd) : _fd(fd), _passwordAuthenticated(false), _nickname(""), _username(""), _realname(""), _isUserReceived(false) {}
 Client::~Client() {}
-Client::Client(const Client &other) : _fd(other._fd), _readBuf(other._readBuf), _passwordAuthenticated(other._passwordAuthenticated), _nickname(other._nickname), _username(other._username), _realname(other._realname), _isUserReceived(other._isUserReceived) {}
+Client::Client(const Client &other) : _fd(other._fd), _readBuf(other._readBuf), _writeBuf(other._writeBuf), _passwordAuthenticated(other._passwordAuthenticated), _nickname(other._nickname), _username(other._username), _realname(other._realname), _isUserReceived(other._isUserReceived) {}
 Client &Client::operator=(const Client &other)
 {
 	if (this != &other)
 	{
 		_fd = other._fd;
 		_readBuf = other._readBuf;
+		_writeBuf = other._writeBuf;
 		_passwordAuthenticated = other._passwordAuthenticated;
 		_isUserReceived = other._isUserReceived;
 		_nickname = other._nickname;
@@ -58,6 +59,27 @@ std::vector<std::string> Client::extractLines()
 		_readBuf.erase(0, pos + 1);
 	}
 	return lines;
+}
+
+// outgoing buffer (D2)
+void Client::appendToWriteBuf(const std::string &data)
+{
+	_writeBuf += data;
+}
+
+bool Client::hasPendingWrite() const
+{
+	return !_writeBuf.empty();
+}
+
+const std::string &Client::getWriteBuf() const
+{
+	return _writeBuf;
+}
+
+void Client::consumeWriteBuf(size_t len)
+{
+	_writeBuf.erase(0, len);
 }
 
 bool Client::isPasswordAuthenticated() const

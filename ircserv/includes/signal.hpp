@@ -3,7 +3,9 @@
 
 #include <csignal>
 
-void	signal_handler(int signal);
+// set to 1 by SIGINT/SIGQUIT handler, checked by eventLoop() every round
+extern volatile std::sig_atomic_t g_serverShutdown;
 
+void	signal_handler(int signal);
 
 #endif

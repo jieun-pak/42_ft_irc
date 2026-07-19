@@ -24,6 +24,7 @@ class Client
 	private:
 		int				_fd;
 		std::string		_readBuf;
+		std::string		_writeBuf;
 		bool			_passwordAuthenticated;
 		std::string		_nickname;
 		std::string		_username;
@@ -39,6 +40,13 @@ class Client
 		int							getFd() const;
 		void						appendToReadBuf(const std::string &data, size_t len);
 		std::vector<std::string>	extractLines();
+
+		// outgoing buffer (D2): handlers queue replies here; the poll loop
+		// drains it on POLLOUT
+		void						appendToWriteBuf(const std::string &data);
+		bool						hasPendingWrite() const;
+		const std::string			&getWriteBuf() const;
+		void						consumeWriteBuf(size_t len);
 
 		bool						isPasswordAuthenticated() const;
 		void						setPasswordAuthenticated(bool authenticated);

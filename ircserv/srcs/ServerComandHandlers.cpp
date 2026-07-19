@@ -59,7 +59,7 @@ void Server::handleNick(const Message& msg, int clientFd)
 			if (it->second && it->second->getFd() != clientFd) // Exclude the current client
 			{
 				std::string notification = ":" + oldNickname + " NICK " + newNickname + "\r\n";
-				send(it->second->getFd(), notification.c_str(), notification.size(), 0);
+				queueSend(it->second->getFd(), notification);
 			}
 		}
 	}
@@ -88,7 +88,7 @@ void Server::handleUser(const Message& msg, int clientFd)
 	{
 		// Registration is complete, you can send a welcome message or perform other actions
 		std::string welcomeMessage = "Welcome to the IRC server, " + client->getNickname() + "!\r\n";
-		send(clientFd, welcomeMessage.c_str(), welcomeMessage.size(), 0);
+		queueSend(clientFd, welcomeMessage); //send()
 	}
 }
 

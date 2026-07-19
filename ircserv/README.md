@@ -1,8 +1,8 @@
 # ft_irc — dev README (working doc)
 
-Team working doc for the `ircserv` implementation. Detailed Phase 1 design/decisions: [plan-phase1.md](plan-phase1.md).
+Team working doc for the `ircserv` implementation. Detailed Phase 1 design/decisions: [plan-phase1.md](../jin-note/plan-phase1.md).
 
-> ⚠️ Subject Chapter V requires a `README.md` **at the repo root** (italic first line
+> NOTE: Subject Chapter V requires a `README.md` **at the repo root** (italic first line
 > "*This project has been created as part of the 42 curriculum by \<login1\>, \<login2\>*",
 > plus **Description / Instructions / Resources** sections, in English). That file doesn't exist yet — see Defense checklist below.
 
@@ -17,25 +17,29 @@ Team working doc for the `ircserv` implementation. Detailed Phase 1 design/decis
 
 ## TODOs
 
-### Phase 1 — Skeleton + server loop (details & rationale: [plan-phase1.md](plan-phase1.md))
+### Phase 1 — Skeleton + server loop (details & rationale: [plan-phase1.md](../jin-note/plan-phase1.md))
 - [x] `socket()` / `bind()` / `listen()` / `accept()`
 - [x] single `poll()` event loop (one thread, no fork)
 - [x] per-client read buffer + line extraction (handles `\r\n` fragmentation from `nc -C`)
 - [x] SIGINT handler sets a shutdown flag
-- [ ] `fcntl(fd, F_SETFL, O_NONBLOCK)` on listen fd + every client fd — **subject requires it; not set anywhere yet**
-- [ ] route `send()` through the poll loop (per-client out-buffer + `POLLOUT`) — subject: any send **without poll() = grade 0**
-- [ ] fix: `accept()` failure calls `exit(1)` → one bad accept kills the whole server (subject: crash/quit = grade 0)
-- [ ] handle `POLLHUP` / `POLLERR` / `POLLNVAL` in `eventLoop()`, not only `POLLIN`
-- [ ] safe fd removal: `receiveData()` erases from `_pfds` while `eventLoop()` iterates it (skips entries)
-- [ ] actually check the shutdown flag in `eventLoop()` (+ handle `poll()` returning `-1` with `errno == EINTR`)
-- [ ] `setsockopt(SO_REUSEADDR)` on the listening socket (avoids `bind()` failing ~60s after restart)
+- [x] one `recv()` per `POLLIN` event (D1) — no drain loop, poll re-notifies for leftovers
+- [x] `fcntl(fd, F_SETFL, O_NONBLOCK)` on listen fd + every client fd (D3)
+- [x] route `send()` through the poll loop (D2): per-client `_writeBuf` + `POLLOUT`; handlers use `queueSend()`, the only `send()` lives in `sendData()`
+- [x] fix: `accept()` failure no longer `exit(1)` — logs, returns -1, server keeps running (D4 slice)
+- [x] `setsockopt(SO_REUSEADDR)` on the listening socket (D7 — fixes `bind()` failing ~60s after restart)
+- [x] handle `POLLHUP` / `POLLERR` / `POLLNVAL` in `eventLoop()` (D4 — hangup-only events disconnect the client)
+- [x] safe fd removal (D5): disconnects go through `disconnectClient()` → `_fdsToRemove`, `_pfds` erased only after the scan loop
+- [x] clean shutdown (D6): `g_serverShutdown` is `volatile sig_atomic_t`, checked in `eventLoop()`; `EINTR` handled; SIGINT+SIGQUIT; destructor closes all fds
+- [x] `Server` non-copyable (D8): copy ctor/`operator=` private and unimplemented — copying would double-delete `Client*`
+- [x] reference client decided (D9): **irssi** (proposed — teammate to confirm)
 
 ### Phase 2 — Registration (PASS / NICK / USER)
 - [x] `handlePass` / `handleNick` / `handleUser` drafted with real logic
 - [x] make it compile
 - [ ] reply with real IRC numerics instead of `std::cerr`/ad-hoc strings:
       `001 RPL_WELCOME`, `433 ERR_NICKNAMEINUSE`, `464 ERR_PASSWDMISMATCH`,
-      `451 ERR_NOTREGISTERED`, `461 ERR_NEEDMOREPARAMS`, `421 ERR_UNKNOWNCOMMAND`
+      `451 ERR_NOTREGISTERED`, `461 ERR_NEEDMOREPARAMS`, `421 ERR_UNKNOWNCOMMAND`,
+      `462 ERR_ALREADYREGISTRED` (found in testing: `PASS` after registration is currently re-processed)
 - [ ] gate all non-registration commands behind "is this client registered yet?"
 - [ ] `Server::parse()` must support the trailing `:` param (rest-of-line-as-one-arg) —
       right now `USER jin 0 * :Jin Park` stores realname as `":Jin"` and drops `"Park"`
@@ -54,6 +58,21 @@ Team working doc for the `ircserv` implementation. Detailed Phase 1 design/decis
 - [ ] `MODE`: `+/-i` invite-only, `+/-t` topic lock, `+/-k <key>` password,
       `+/-o <nick>` operator, `+/-l <limit>` user cap
 
+## Bugs / things to handle (found in manual testing, 2026-07-19)
+- [ ] `handleNick`: broadcast shows old nick == new nick (`:JIN NICK JIN`) —
+      it reads `getNickname()` *after* `setNickname()`, so the "old" name is
+      already the new one. Fix: capture `oldNickname` *before* setting.
+- [ ] `handleNick`: broadcasts to **every** connected client, and even on a
+      client's *first* NICK. Correct IRC: first NICK during registration is not
+      broadcast at all; a real nick *change* goes only to the client itself +
+      clients sharing a channel (audience fix needs channels — Phase 3).
+      Phase 2 fix: only broadcast when `oldNickname` was non-empty.
+- [ ] `PASS` sent *after* successful registration is re-processed (wrong pw just
+      logs an error) — must answer `462 ERR_ALREADYREGISTRED` and leave auth
+      state untouched (also listed in Phase 2 numerics).
+- [ ] commands before registration (e.g. `hello` before `PASS`) are silently
+      dropped — needs registration gating + `421`/`451` replies (Phase 2).
+
 ---
 
 # How to Test
@@ -62,14 +81,14 @@ Team working doc for the `ircserv` implementation. Detailed Phase 1 design/decis
 
 | Behavior | Status |
 |---|---|
-| `make` / `make re` clean build (C++98, `-Wall -Wextra -Werror`) | ✅ |
-| Accepts one or many `nc` clients through one `poll()` | ✅ |
-| Buffers partial input, splits on `\r\n` / `\n` | ✅ |
-| `PASS` → `NICK` → `USER` → welcome text | ✅ (plain text, **not** numeric `001` yet) |
-| Errors (wrong pass, dup nick) | ⚠️ printed on **server** stderr only — client gets nothing |
-| Unknown command | ⚠️ silently ignored (no `421` yet) |
-| Real IRC client (irssi) full registration | ❌ irssi waits for numeric `001` — not sent yet |
-| `JOIN` / `PRIVMSG` / `PART` / `QUIT` | ❌ empty stubs |
+| `make` / `make re` clean build (C++98, `-Wall -Wextra -Werror`) | [x] |
+| Accepts one or many `nc` clients through one `poll()` | [x] |
+| Buffers partial input, splits on `\r\n` / `\n` | [x] |
+| `PASS` → `NICK` → `USER` → welcome text | [x] plain text, **not** numeric `001` yet |
+| Errors (wrong pass, dup nick) | [~] printed on **server** stderr only — client gets nothing |
+| Unknown command | [~] silently ignored (no `421` yet) |
+| Real IRC client (irssi) full registration | [ ] irssi waits for numeric `001` — not sent yet |
+| `JOIN` / `PRIVMSG` / `PART` / `QUIT` | [ ] empty stubs |
 
 ## 1. Build checks
 ```bash
@@ -88,8 +107,8 @@ Also test bad args — the server must refuse and not crash:
 ./ircserv 99999 pw        # invalid port
 ./ircserv 6667 ""         # empty password
 ```
-> Note: until `SO_REUSEADDR` is added, restarting right after Ctrl+C can fail with
-> "Error binding socket" for ~60s (kernel TIME_WAIT). Wait or change port.
+> `SO_REUSEADDR` is set (D7), so restarting immediately after Ctrl+C must succeed —
+> if you ever see "Error binding socket", that's a regression.
 
 ## 3. Basic connection + multi-client
 ```bash
@@ -161,7 +180,7 @@ ps aux | grep ircserv | grep -v grep           # after tests: no leftover server
 # Defense checklist (from subject v10.0)
 - [ ] `README.md` at **repo root**: italic first line with logins, Description, Instructions, Resources (incl. how AI was used) — English
 - [ ] stop tracking the compiled binary `ircserv/ircserv` (it's in git; add to `.gitignore`, `git rm --cached`)
-- [ ] pick and state the **reference client**; it must connect with zero errors
+- [ ] reference client = **irssi** (proposed): must connect with zero errors — blocked on Phase 2 numerics (`001`)
 - [ ] only allowed external functions used (see subject p.6); `fcntl` **only** as `fcntl(fd, F_SETFL, O_NONBLOCK)`
 - [ ] exactly **one** `poll()` handles everything — read *and* write; no fork, no threads
 - [ ] server never crashes / never quits unexpectedly (crash = grade 0)

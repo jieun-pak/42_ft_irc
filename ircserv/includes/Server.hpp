@@ -22,13 +22,21 @@ class Server
 {
 	private:
 		Server();
+		// D8: a Server owns raw Client* pointers — copying would double-delete
+		// them. Declared private and left unimplemented (C++98 non-copyable idiom).
+		Server(const Server &other);
+		Server &operator=(const Server &other);
+
 		int _sockfd;
 		int _port;
-		
+
 		std::string _password;
 		std::vector<struct pollfd> _pfds;
 		std::map<int, Client*> _clients;
 		std::map<std::string, Channel*> _channels;
+		// D5: fds whose _pfds entry must be erased after eventLoop's scan —
+		// erasing mid-iteration shifts the vector and skips events
+		std::vector<int> _fdsToRemove;
 
 		// Helper functions
 		Message		parse(const std::string& line);
@@ -51,6 +59,12 @@ class Server
 		bool	isValidNickname(const std::string &nickname);
 		bool	isNicknameInUse(const std::string &nickname, int excludeFd);
 
+		// D2 send path: POLLOUT is set on a client's pollfd iff its _writeBuf
+		// is non-empty (otherwise poll() would spin — sockets are almost
+		// always writable)
+		void	setPollOut(int fd, bool enable);
+		void	queueSend(int clientFd, const std::string &msg);
+
 		// command handlers
 		void	handlePass(const Message& msg, int clientFd);
 		void	handleNick(const Message& msg, int clientFd);
@@ -63,8 +77,6 @@ class Server
 	public:
 		Server(int port, const std::string &password);
 		~Server();
-		Server(const Server &other);
-		Server &operator=(const Server &other);
 
 		void	initSocket();
 		void	bindSocket();
@@ -72,6 +84,7 @@ class Server
 		int		acceptConnection();
 		void	eventLoop();
 		void	receiveData(int clientFd);
+		void	sendData(int clientFd);
 		
 		void run();
 		
@@ -79,6 +92,7 @@ class Server
 		void	addClient(int fd, Client* client);
 		void	deleteClient(int fd);
 		void	removeClientFromPoll(int fd);
+		void	disconnectClient(int fd);
 		Client* getClient(int fd);
 
 		void 	executeCommand(const Message& msg, int clientFd);
