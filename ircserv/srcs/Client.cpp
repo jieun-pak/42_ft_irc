@@ -123,3 +123,8 @@ void Client::setUserReceived(bool received)
 {
 	_isUserReceived = received;
 }
+
+void Client::joinChannel(const std::string &channelName)
+{
+	_joinedChannels.push_back(channelName);
+}

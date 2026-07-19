@@ -185,3 +185,28 @@ ps aux | grep ircserv | grep -v grep           # after tests: no leftover server
 - [ ] exactly **one** `poll()` handles everything — read *and* write; no fork, no threads
 - [ ] server never crashes / never quits unexpectedly (crash = grade 0)
 - [ ] be ready for a small live code modification during evaluation
+
+
+
+## Bugs
+- when a client is usint NICK command, other clients can not communicat with the server.
+- seg fault in this situation:
+```
+% ./ircserv 6667 1234
+New client connected: 127.0.0.1
+With Port: 48666
+Received data from client 4: JOIN #general
+
+Processing line from client 4: JOIN #general
+Error: Client must be authenticated before joining a channel.
+Received data from client 4: NICK habib
+
+Processing line from client 4: NICK habib
+Received data from client 4: PASS 1234
+
+Processing line from client 4: PASS 1234
+Received data from client 4: JOIN #general
+
+Processing line from client 4: JOIN #general
+zsh: segmentation fault (core dumped)  ./ircserv 6667 1234
+```

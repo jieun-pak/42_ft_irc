@@ -58,6 +58,7 @@ class Server
 
 		bool	isValidNickname(const std::string &nickname);
 		bool	isNicknameInUse(const std::string &nickname, int excludeFd);
+		bool	isValidChannelName(const std::string &channelName);
 
 		// D2 send path: POLLOUT is set on a client's pollfd iff its _writeBuf
 		// is non-empty (otherwise poll() would spin — sockets are almost
@@ -73,6 +74,10 @@ class Server
 		void	handlePart(const Message& msg, int clientFd);
 		void	handlePrivmsg(const Message& msg, int clientFd);
 		void	handleQuit(const Message& msg, int clientFd);
+
+		// JOIN command helpers
+		void	sendTopic(Channel* channel, Client* client);
+		void	sendNamesList(Channel* channel, Client* client);
 
 	public:
 		Server(int port, const std::string &password);
