@@ -1,5 +1,6 @@
 #include "../includes/Server.hpp"
 #include "../includes/signal.hpp"
+#include "../includes/Channel.hpp"
 
 // constructor, destructor, copy constructor, assignment operator (Orthodox Canonical Form)
 //TODO: habib check Q. do we need _client?
@@ -64,6 +65,19 @@ void Server::removeClientFromPoll(int fd)
 			break;
 		}
 	}
+}
+
+bool Server::isChannelExists(const std::string &channelName)
+{
+	return _channels.find(channelName) != _channels.end();
+}
+
+bool Server::isClientInChannel(Client *client, const std::string &channelName)
+{
+	Channel *channel = _channels[channelName];
+	if (!channel)
+		return false;
+	return channel->isMember(client);
 }
 
 // D5: close + free the client now, but defer the _pfds erase until after

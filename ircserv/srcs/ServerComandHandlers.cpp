@@ -1,6 +1,7 @@
 #include "../includes/Server.hpp"
 #include "../includes/Channel.hpp"
 #include <algorithm>
+#include <cstdlib> // For std::stoi
 
 void Server::handlePass(const Message &msg, int clientFd)
 {
@@ -179,10 +180,29 @@ void Server::handleJoin(const Message &msg, int clientFd)
 		std::cerr << "Error: Channel " << channelName << " is full." << std::endl;
 		return;
 	}
-	//TODO: Implement invite only (+i)
-	//TODO: Implement password protected (+k)
-	//TODO: Implement user limit (+l)
-	//TODO: Implement banned users (+b)
+	if (channel->isInviteOnly())
+	{
+		std::cerr << "Error: Channel " << channelName << " is invite-only." << std::endl;
+		return;
+	}
+	if (channel->isPasswordProtected())
+	{
+		if (msg.getParams().size() < 2 || msg.getParams()[1] != channel->getPassword())
+		{
+			std::cerr << "Error: Incorrect or missing password for channel " << channelName << std::endl;
+			return;
+		}
+	}
+	if (channel->isUserLimitReached())
+	{
+		std::cerr << "Error: Channel " << channelName << " has reached its user limit." << std::endl;
+		return;
+	}
+	if (channel->isBanned(client->getNickname()))
+	{
+		std::cerr << "Error: Client " << client->getNickname() << " is banned from channel " << channelName << std::endl;
+		return;
+	}
 	// 3. Add client to channel
 	channel->addMember(client);
 	client->joinChannel(channelName);
@@ -193,6 +213,92 @@ void Server::handleJoin(const Message &msg, int clientFd)
 	sendNamesList(channel, client);
 	// Debug print
 	std::cout << "Client " << client->getNickname() << " joined channel " << channelName << std::endl;
+}
+
+void Server::handleMode(const Message &msg, int clientFd)
+{
+	(void)msg;
+	(void)clientFd;
+	// 1. Validate parameters
+	if (msg.getParams().size() < 2)
+	{
+		std::cerr << "Error: MODE command requires at least two parameters." << std::endl;
+		return;
+	}
+	// 2. Check channel exists
+	if (!isChannelExists(msg.getParams()[0]))
+	{
+		std::cerr << "Error: Channel " << msg.getParams()[0] << " does not exist." << std::endl;
+		return;
+	}
+	// 3. Check client is in channel
+	if (!isClientInChannel(getClient(clientFd), msg.getParams()[0]))
+	{
+		std::cerr << "Error: Client is not in channel " << msg.getParams()[0] << std::endl;
+		return;
+	}
+	// 4. Apply mode changes
+	switch (msg.getParams()[1][0])
+	{
+	case '+':
+		switch (msg.getParams()[1][1])
+		{
+		case 'i':
+			// Handle +i (invite-only)
+			_channels[msg.getParams()[0]]->setInviteOnly(true);
+			break;
+		case 'k':
+			// Handle +k (password protected)
+			_channels[msg.getParams()[0]]->setPassword(msg.getParams()[2]);
+			break;
+		case 'l':
+			// Handle +l (user limit)
+			_channels[msg.getParams()[0]]->setUserLimit(std::stoi(msg.getParams()[2]));
+			break;
+		case 'b':
+			// Handle +b (banned users)
+			_channels[msg.getParams()[0]]->addBannedUser(msg.getParams()[2]);
+			break;
+		default:
+			std::cerr << "Error: Invalid mode change format." << std::endl;
+			return;
+		}
+		break;
+	case '-':
+		switch (msg.getParams()[1][1])
+		{
+		case 'i':
+			// Handle -i (remove invite-only)
+			_channels[msg.getParams()[0]]->setInviteOnly(false);
+			break;
+		case 'k':
+			// Handle -k (remove password protection)
+			_channels[msg.getParams()[0]]->setPassword("");
+			break;
+		case 'l':
+			// Handle -l (remove user limit)
+			_channels[msg.getParams()[0]]->setUserLimit(0);
+			break;
+		case 'b':
+			// Handle -b (remove banned users)
+			_channels[msg.getParams()[0]]->removeBannedUser(msg.getParams()[2]);
+			break;
+		default:
+			std::cerr << "Error: Invalid mode change format." << std::endl;
+			return;
+		}
+		break;
+	default:
+		std::cerr << "Error: Invalid mode change format." << std::endl;
+		return;
+	}
+
+	// 5. Broadcast MODE message
+	std::string modeMessage = ":" + getClient(clientFd)->getNickname() + " MODE " + msg.getParams()[0] + " " + msg.getParams()[1];
+	if (msg.getParams().size() > 2)
+		modeMessage += " " + msg.getParams()[2];
+	modeMessage += "\r\n";
+	_channels[msg.getParams()[0]]->broadcastMessage(modeMessage, getClient(clientFd));
 }
 
 void Server::handlePart(const Message &msg, int clientFd)
