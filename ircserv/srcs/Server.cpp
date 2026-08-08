@@ -406,6 +406,20 @@ void Server::queueSend(int clientFd, const std::string &msg)
 	setPollOut(clientFd, true);
 }
 
+// Sends message to every member of channel except sender, via queueSend() —
+// replaces Channel::broadcastMessage(), which called send() directly and
+// bypassed POLLOUT (D2 violation: fine on a small local test where the
+// kernel send buffer never fills, but not guaranteed correct in general).
+void Server::broadcastToChannel(Channel *channel, const std::string &message, Client *sender)
+{
+	const std::vector<Client *> &members = channel->getMembers();
+	for (std::vector<Client *>::const_iterator it = members.begin(); it != members.end(); ++it)
+	{
+		if (*it != sender)
+			queueSend((*it)->getFd(), message);
+	}
+}
+
 // Formats and queues a numeric reply, e.g. ":ircserv 001 jin :Welcome...".
 // code is zero-padded to 3 digits (matters for 001). middleParam is an
 // optional extra token before the trailing " :message" (e.g. the attempted

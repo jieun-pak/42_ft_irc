@@ -73,6 +73,12 @@ class Server
 		void	setPollOut(int fd, bool enable);
 		void	queueSend(int clientFd, const std::string &msg);
 
+		// Channel has no Server* (and no access to queueSend/POLLOUT), so
+		// broadcasting to a channel's members lives here instead of on
+		// Channel — this is the only place a message reaches multiple
+		// clients that still goes through the D2 send path.
+		void	broadcastToChannel(Channel *channel, const std::string &message, Client *sender);
+
 		// numeric replies (RPL_*/ERR_*, see Replies.hpp): the one place that
 		// formats ":<server> <code> <target>[ <middleParam>] :<trailing>\r\n"
 		void	sendNumericReply(int clientFd, int code, const std::string &target, const std::string &middleParam, const std::string &trailing);

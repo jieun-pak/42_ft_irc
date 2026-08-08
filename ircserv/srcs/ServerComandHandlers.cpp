@@ -235,9 +235,7 @@ void Server::handleJoin(const Message &msg, int clientFd)
 		return;
 	}
 	client->joinChannel(channelName);
-	// 4. TODO: Broadcast JOIN message
-	channel->broadcastMessage(":" + client->getNickname() + " JOIN " + channelName + "\r\n", client);
-	// 5. TODO: Send topic and names list
+	broadcastToChannel(channel, ":" + client->getNickname() + " JOIN " + channelName + "\r\n", client);
 	sendTopic(channel, client);
 	sendNamesList(channel, client);
 	// Debug print
@@ -460,7 +458,7 @@ void Server::handleMode(const Message &msg, int clientFd)
 
     modeMessage += "\r\n";
 
-    channel->broadcastMessage(modeMessage, client);
+    broadcastToChannel(channel, modeMessage, client);
 }
 
 void Server::handlePart(const Message &msg, int clientFd)

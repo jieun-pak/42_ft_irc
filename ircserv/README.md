@@ -10,8 +10,8 @@ Team working doc for the `ircserv` implementation. Detailed Phase 1 design/decis
 
 - [x] Phase 1 — Skeleton + server loop (socket → poll() → accept)
 - [x] Phase 2 — Registration (PASS / NICK / USER → 001 RPL_WELCOME)
-- [~] Phase 3 — Channels + messaging (JOIN / PRIVMSG / PART / QUIT) — JOIN implemented but has a crash bug; PRIVMSG/PART/QUIT still empty
-- [~] Phase 4 — Operator commands (KICK / INVITE / TOPIC / MODE i,t,k,o,l) — MODE drafted but not wired into the dispatcher (dead code); no operator concept yet; KICK/INVITE/TOPIC not started
+- [~] Phase 3 — Channels + messaging (JOIN / PRIVMSG / PART / QUIT) — JOIN implemented and working; PRIVMSG/PART/QUIT still empty
+- [~] Phase 4 — Operator commands (KICK / INVITE / TOPIC / MODE i,t,k,o,l) — MODE implemented and wired in, but `isOperator()` has a real bug (see Phase 4 TODOs); KICK/INVITE/TOPIC not started
 
 > Build is currently BROKEN: `std::stoi` (C++11) used in `ServerComandHandlers.cpp:256` — does not compile under `-std=c++98`. See Bugs section below.
 
@@ -64,26 +64,49 @@ Team working doc for the `ircserv` implementation. Detailed Phase 1 design/decis
 ### Phase 3 — Channels + messaging (in progress)
 - [x] `Channel` class: name, members, topic, invite-only flag, password, user limit, banned-users list
 - [x] `JOIN`: creates channel if missing, adds member, sends `RPL_NOTOPIC`/`RPL_TOPIC` (331/332)
-      and `RPL_NAMREPLY`/`RPL_ENDOFNAMES` (353/366), broadcasts JOIN to channel —
-      **has a crash bug and an auth-check bug, see Bugs section**
-- [ ] first joiner does NOT become operator — `Channel` has no operator/op list at all yet
-      (needed for KICK/INVITE/TOPIC/MODE+o gating in Phase 4)
+      and `RPL_NAMREPLY`/`RPL_ENDOFNAMES` (353/366), broadcasts JOIN to channel. The original
+      crash bug and auth-check bug are long fixed (see "Bugs found in code review, 2026-08-08"
+      below); `addMember()` now returns `bool` so a rejected add can never be mistaken for
+      success (2026-08-08).
+- [x] first joiner becomes operator — **2026-08-08**, `handleJoin` calls `channel->addOperator(client)`
+      when creating a new channel, and `Channel` has a real `_operators` list with
+      `addOperator()`/`removeOperator()` (used by `MODE +o`/`-o` too). **Known bug in this,
+      see "Bugs" below:** `isOperator()` doesn't actually check `_operators` — see next section.
 - [ ] `PRIVMSG`: still an empty stub — to a channel (broadcast to members) and to a nick (direct)
 - [ ] `PART`: still an empty stub — remove from channel, broadcast, destroy channel if now empty
 - [ ] `QUIT`: still an empty stub — remove from all joined channels, broadcast, close fd, clean up
-- [x] `Channel::broadcastMessage()` and `sendTopic()`/`sendNamesList()` call `send()` directly,
-      bypassing `queueSend()`/`POLLOUT` — violates the same subject rule D2 fixed in Phase 1;
-      needs converting (Channel has no access to `Server::queueSend`, needs a design decision)
-- [x] `_channels` map entries (`new Channel(...)`) are never freed — the cleanup loop in
-      `Server::~Server()` is still commented out; now an active leak, not just a placeholder
+- [x] `Channel::broadcastMessage()` (called `send()` directly, bypassing `queueSend()`/`POLLOUT`,
+      violating subject rule D2) — **fixed 2026-08-08, removed entirely.** `Channel` has no
+      `Server*` to call `queueSend()` through, so rather than plumb one in, the broadcast logic
+      moved to `Server::broadcastToChannel(channel, message, sender)` (`Server.cpp`), which
+      already has `queueSend()` and just iterates `channel->getMembers()`. Both call sites
+      (`handleJoin`'s JOIN broadcast, `handleMode`'s MODE broadcast) updated. `sendTopic()`/
+      `sendNamesList()` were already fixed earlier the same day via `sendNumericReply()`.
+- [x] `_channels` map entries (`new Channel(...)`) are never freed — **already fixed** (found
+      already-implemented 2026-08-08, doc was stale): `Server::~Server()`'s cleanup loop is
+      live, not commented out — deletes every `Channel*` and clears the map.
+- [ ] **`Channel::MAX_MEMBERS` (hard cap of 10) doesn't seem to be checked anywhere
+      reachable — found 2026-08-08.** `handleJoin` only checks `isUserLimitReached()`,
+      which is the `_userLimit`/`MODE +l` value (defaults to unlimited, 0), not
+      `MAX_MEMBERS`; `Channel::addMember`'s own guard uses that same `_userLimit`-based
+      check too. So a channel can grow past 10 members freely unless `+l` is explicitly
+      set — flagging in case that's not intentional, not fixed yet.
 
-### Phase 4 — Operator commands (drafted, not functional)
-- [ ] `MODE` handler is written (`handleMode`, `+/-i`, `+/-k`, `+/-l`, `+/-b`) but **`CMD_MODE`
-      is missing from the `CommandType` enum, `getCommandType()`, and the `executeCommand()`
-      switch** — a client sending `MODE` currently falls through to `CMD_UNKNOWN` and does
-      nothing. Must wire it in before any of the below can even be reached.
-- [ ] `MODE +/-t` (topic lock to ops) and `MODE +/-o` (grant/revoke operator) are not implemented
-      at all (`+/-o` is impossible anyway until `Channel` has an operator list — see Phase 3)
+### Phase 4 — Operator commands (in progress)
+- [x] `handleMode` (`+/-i`, `+/-t`, `+/-k`, `+/-l`, `+/-o`) is written **and wired in** —
+      `CMD_MODE` is in the `CommandType` enum, `getCommandType()`, and the `executeCommand()`
+      switch (doc was stale: this was previously flagged as unwired, no longer true). Every
+      branch replies with a real numeric; see the earlier "which case do I need std::cerr vs
+      sendNumeric" review — this handler was already fully converted before that review.
+- [x] **Bug found 2026-08-08: `Channel::isOperator()` didn't check `_operators` at all —
+      fixed same day.** It used to check `!_members.empty() && _members[0] == client` ("are
+      you literally the first member"), while `addOperator()`/`removeOperator()` maintain a
+      separate `_operators` vector that `isOperator()` never read. Effects before the fix:
+      `MODE +o` granting operator to anyone other than the channel's first member did
+      nothing; `MODE -o` on the first member did nothing either; once `PART` exists, whoever
+      becomes the new first member would inherit operator status never granted to them. Now
+      `isOperator()` searches `_operators` (mirrors `isMember()` searching `_members`), so
+      `+o`/`-o` actually take effect for whoever they're applied to.
 - [ ] `KICK #channel nick [:reason]` — not started
 - [ ] `INVITE nick #channel` — not started
 - [ ] `TOPIC #channel [:newtopic]` as its own command — not started (JOIN currently only
