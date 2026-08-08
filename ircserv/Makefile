@@ -24,6 +24,7 @@ HEADERS	=	includes/ft_irc.hpp \
 			includes/Server.hpp \
 			includes/Client.hpp \
 			includes/Channel.hpp \
+			includes/Replies.hpp \
 			includes/signal.hpp
 
 # default target
