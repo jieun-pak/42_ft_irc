@@ -43,9 +43,6 @@ class Channel
 		bool isOperator(Client *client) const;
 
 		// setters
-		// Returns false (no-op) if client is already a member or the channel is
-		// full — callers must check this instead of assuming success, since
-		// Channel has no way to tell them why beyond a server-side log line
 		bool addMember(Client *client);
 		void removeMember(Client *client);
 		void setTopic(const std::string &topic);
@@ -57,9 +54,6 @@ class Channel
 		void setRestrictedTopic(bool restricted);
 		void addOperator(Client *client);
 		void removeOperator(Client *client);
-
-
-		void broadcastMessage(const std::string &message, Client *sender);
 };
 
 #endif // CHANNEL_HPP
