@@ -226,6 +226,8 @@ Server::CommandType Server::getCommandType(const std::string& command)
 		return CMD_USER;
 	if (command == "JOIN")
 		return CMD_JOIN;
+	if (command == "MODE")
+		return CMD_MODE;
 	if (command == "PART")
 		return CMD_PART;
 	if (command == "PRIVMSG")
@@ -318,6 +320,9 @@ void	Server::executeCommand(const Message& msg, int clientFd)
 		break;
 	case CMD_JOIN:
 		handleJoin(msg, clientFd);
+		break;
+	case CMD_MODE:
+		handleMode(msg, clientFd);
 		break;
 	case CMD_PART:
 		handlePart(msg, clientFd);
@@ -527,4 +532,16 @@ void Server::run()
 	bindSocket();
 	listenSocket();
 	eventLoop();
+}
+
+
+// getters
+Client* Server::getClientByNickname(const std::string &nickname)
+{
+	for (std::map<int, Client *>::iterator it = _clients.begin(); it != _clients.end(); ++it)
+	{
+		if (it->second && it->second->getNickname() == nickname)
+			return it->second;
+	}
+	return NULL;
 }

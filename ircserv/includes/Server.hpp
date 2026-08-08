@@ -50,6 +50,7 @@ class Server
     	    CMD_NICK,
     	    CMD_USER,
     	    CMD_JOIN,
+			CMD_MODE,
     	    CMD_PART,
     	    CMD_PRIVMSG,
     	    CMD_QUIT
@@ -105,12 +106,15 @@ class Server
 		
 		void run();
 		
-		// getters and setters
+		// getters
+		Client* getClient(int fd);
+		Client* getClientByNickname(const std::string &nickname);
+
+		// setters
 		void	addClient(int fd, Client* client);
 		void	deleteClient(int fd);
 		void	removeClientFromPoll(int fd);
 		void	disconnectClient(int fd);
-		Client* getClient(int fd);
 
 		void 	executeCommand(const Message& msg, int clientFd);
 };

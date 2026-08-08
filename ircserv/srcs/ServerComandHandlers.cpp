@@ -185,6 +185,9 @@ void Server::handleJoin(const Message &msg, int clientFd)
 		// Channel does not exist, create it
 		channel = new Channel(channelName);
 		_channels[channelName] = channel;
+		// add the joining client as the first operator
+		channel->addOperator(client);
+
 	}
 	else
 	{
@@ -192,16 +195,6 @@ void Server::handleJoin(const Message &msg, int clientFd)
 	}
 
 	// 3. Check channel restrictions
-	if (channel->getMembers().end() != std::find(channel->getMembers().begin(), channel->getMembers().end(), client))
-	{
-		std::cerr << "Error: Client is already a member of channel " << channelName << std::endl;
-		return;
-	}
-	if (channel->getMembers().size() >= Channel::MAX_MEMBERS) // Example: max 10 members
-	{
-		std::cerr << "Error: Channel " << channelName << " is full." << std::endl;
-		return;
-	}
 	if (channel->isInviteOnly())
 	{
 		std::cerr << "Error: Channel " << channelName << " is invite-only." << std::endl;
@@ -239,43 +232,61 @@ void Server::handleJoin(const Message &msg, int clientFd)
 
 void Server::handleMode(const Message &msg, int clientFd)
 {
-    // 1. Validate basic parameters
-    if (msg.getParams().size() < 2)
-    {
-        std::cerr << "Error: MODE command requires at least two parameters."
-                  << std::endl;
-        return;
-    }
-	// if we have 3 parameters, the third one is used for +k and +l modes
-
     Client *client = getClient(clientFd);
     if (!client)
         return;
 
-    // 2. Check channel exists
-    if (!isChannelExists(msg.getParams()[0]))
+    // 1. Validate basic parameters
+    if (msg.getParams().size() < 2)
     {
-        std::cerr << "Error: Channel " << msg.getParams()[0]
-                  << " does not exist." << std::endl;
+        sendNumericReply(
+            clientFd, ERR_NEEDMOREPARAMS, replyTarget(client), "MODE", "Not enough parameters"
+        );
         return;
     }
 
-    Channel *channel = _channels[msg.getParams()[0]];
+    const std::string &channelName = msg.getParams()[0];
+
+    // 2. Check channel exists
+    if (!isChannelExists(channelName))
+    {
+        sendNumericReply(
+            clientFd,
+            ERR_NOSUCHCHANNEL,
+            replyTarget(client),
+            channelName,
+            "No such channel"
+        );
+        return;
+    }
+
+    Channel *channel = _channels[channelName];
 
     // 3. Check client is in channel
-    if (!isClientInChannel(client, channel->getName()))
+    if (!isClientInChannel(client, channelName))
     {
-        std::cerr << "Error: Client is not in channel "
-                  << channel->getName() << std::endl;
+        sendNumericReply(
+            clientFd,
+            ERR_NOTONCHANNEL,
+            replyTarget(client),
+            channelName,
+            "You're not on that channel"
+        );
         return;
     }
 
-    // 4. Validate mode string
+// 4. Validate mode string
     const std::string &mode = msg.getParams()[1];
 
     if (mode.size() < 2 || (mode[0] != '+' && mode[0] != '-'))
     {
-        std::cerr << "Error: Invalid mode change format." << std::endl;
+        sendNumericReply(
+            clientFd,
+            ERR_UMODEUNKNOWNFLAG,
+            replyTarget(client),
+            "",
+            "Unknown mode flag"
+        );
         return;
     }
 
@@ -285,8 +296,13 @@ void Server::handleMode(const Message &msg, int clientFd)
     // 5. Check operator privileges
     if (!channel->isOperator(client))
     {
-        std::cerr << "Error: Client is not a channel operator."
-                  << std::endl;
+        sendNumericReply(
+            clientFd,
+            ERR_CHANOPRIVSNEEDED,
+            replyTarget(client),
+            channelName,
+            "You're not channel operator"
+        );
         return;
     }
 
@@ -306,8 +322,13 @@ void Server::handleMode(const Message &msg, int clientFd)
             {
                 if (msg.getParams().size() < 3)
                 {
-                    std::cerr << "Error: +k requires a password."
-                              << std::endl;
+                    sendNumericReply(
+                        clientFd,
+                        ERR_NEEDMOREPARAMS,
+                        replyTarget(client),
+                        "MODE",
+                        "Password required for +k"
+                    );
                     return;
                 }
 
@@ -324,8 +345,13 @@ void Server::handleMode(const Message &msg, int clientFd)
             {
                 if (msg.getParams().size() < 3)
                 {
-                    std::cerr << "Error: +l requires a user limit."
-                              << std::endl;
+                    sendNumericReply(
+                        clientFd,
+                        ERR_NEEDMOREPARAMS,
+                        replyTarget(client),
+                        "MODE",
+                        "User limit required for +l"
+                    );
                     return;
                 }
 
@@ -333,8 +359,13 @@ void Server::handleMode(const Message &msg, int clientFd)
 
                 if (limit <= 0)
                 {
-                    std::cerr << "Error: Invalid user limit."
-                              << std::endl;
+                    sendNumericReply(
+                        clientFd,
+                        ERR_INVALIDMODEPARAM,
+                        replyTarget(client),
+                        channelName,
+                        "Invalid user limit"
+                    );
                     return;
                 }
 
@@ -347,41 +378,68 @@ void Server::handleMode(const Message &msg, int clientFd)
             break;
 
         case 'o':
+        {
             if (msg.getParams().size() < 3)
             {
-                std::cerr << "Error: +o/-o requires a nickname."
-                          << std::endl;
+                sendNumericReply(
+                    clientFd,
+                    ERR_NEEDMOREPARAMS,
+                    replyTarget(client),
+                    "MODE",
+                    "Nickname required for +o/-o"
+                );
                 return;
             }
 
+            Client *target = getClientByNickname(msg.getParams()[2]);
+
+            if (!target)
             {
-                Client *target = getClientByNickname(msg.getParams()[2]);
-
-                if (!target)
-                {
-                    std::cerr << "Error: Client "
-                              << msg.getParams()[2]
-                              << " does not exist." << std::endl;
-                    return;
-                }
-
-                if (action == '+')
-                    channel->addOperator(target);
-                else
-                    channel->removeOperator(target);
+                sendNumericReply(
+                    clientFd,
+                    ERR_NOSUCHNICK,
+                    replyTarget(client),
+                    msg.getParams()[2],
+                    "No such nick"
+                );
+                return;
             }
+
+            if (!isClientInChannel(target, channelName))
+            {
+                sendNumericReply(
+                    clientFd,
+                    ERR_USERNOTINCHANNEL,
+                    replyTarget(client),
+                    target->getNickname(),
+                    "User is not on that channel"
+                );
+                return;
+            }
+
+            if (action == '+')
+                channel->addOperator(target);
+            else
+                channel->removeOperator(target);
+
             break;
+        }
 
         default:
-            std::cerr << "Error: Unsupported channel mode."
-                      << std::endl;
+            sendNumericReply(
+                clientFd,
+                ERR_UNKNOWNMODE,
+                replyTarget(client),
+                std::string(1, modeChar),
+                "is unknown mode char to me"
+            );
             return;
     }
 
     // 7. Broadcast MODE message
     std::string modeMessage =
         ":" + client->getNickname()
-        + " MODE " + channel->getName()
+        + " MODE " + channelName
         + " " + mode;
 
     if (msg.getParams().size() > 2)
@@ -391,7 +449,6 @@ void Server::handleMode(const Message &msg, int clientFd)
 
     channel->broadcastMessage(modeMessage, client);
 }
-
 
 void Server::handlePart(const Message &msg, int clientFd)
 {

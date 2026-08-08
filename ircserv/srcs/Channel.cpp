@@ -1,7 +1,8 @@
 #include "../includes/Channel.hpp"
 #include "../includes/Client.hpp"
+#include "../includes/Replies.hpp"
 #include <sys/socket.h> // For send()
-
+#include <iostream>    // For std::cerr
 const size_t Channel::MAX_MEMBERS = 10;
 
 // Private constructor to prevent default construction
@@ -90,6 +91,20 @@ bool Channel::isOperator(Client *client) const
 // setters
 void Channel::addMember(Client *client)
 {
+	//check if the client is already a member
+	if (isMember(client)){
+		std::cerr << "Error: Client is already a member of channel " << _name << std::endl;
+		//sendNumericReply(client->getFd(), ERR_ALREADYREGISTERED, client->getNickname(), _name, "You are already a member of this channel");
+		return;
+	}
+
+	//check if the channel is full
+	if (isUserLimitReached()){
+		std::cerr << "Error: Channel " << _name << " is full." << std::endl;
+		//sendNumericReply(client->getFd(), ERR_CHANNELISFULL, client->getNickname(), _name, "Channel is full");
+		return;
+	}
+
 	_members.push_back(client);
 }
 
@@ -162,3 +177,25 @@ void Channel::broadcastMessage(const std::string &message, Client *sender)
 	}
 }
 
+void Channel::addOperator(Client *client)
+{
+	if (!isOperator(client))
+	{
+		_operators.push_back(client);
+	}
+}
+
+void Channel::removeOperator(Client *client)
+{
+	if (isOperator(client))
+	{
+		for (std::vector<Client *>::iterator it = _operators.begin(); it != _operators.end(); ++it)
+		{
+			if (*it == client)
+			{
+				_operators.erase(it);
+				break;
+			}
+		}
+	}
+}

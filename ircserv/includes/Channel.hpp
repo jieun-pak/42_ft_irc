@@ -11,6 +11,8 @@ class Channel
 	private:
 		std::string _name;
 		std::vector<Client*> _members;
+		std::vector<Client*> _operators;
+
 		std::string _topic;
 		bool _inviteOnly;
 		std::string _password;
@@ -50,6 +52,8 @@ class Channel
 		void addBannedUser(const std::string &user);
 		void removeBannedUser(const std::string &user);
 		void setRestrictedTopic(bool restricted);
+		void addOperator(Client *client);
+		void removeOperator(Client *client);
 
 
 		void broadcastMessage(const std::string &message, Client *sender);
