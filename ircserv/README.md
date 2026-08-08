@@ -78,14 +78,23 @@ Team working doc for the `ircserv` implementation. Detailed Phase 1 design/decis
       *shows* the topic on join; there's no way to *view or change* it afterward)
 
 ## Bugs / things to handle (found in manual testing, 2026-07-19)
-- [ ] `handleNick`: broadcast shows old nick == new nick (`:JIN NICK JIN`) —
-      it reads `getNickname()` *after* `setNickname()`, so the "old" name is
-      already the new one. Fix: capture `oldNickname` *before* setting.
-- [ ] `handleNick`: broadcasts to **every** connected client, and even on a
-      client's *first* NICK. Correct IRC: first NICK during registration is not
-      broadcast at all; a real nick *change* goes only to the client itself +
-      clients sharing a channel (audience fix needs channels — Phase 3).
-      Phase 2 fix: only broadcast when `oldNickname` was non-empty.
+- [x] `handleNick`: old==new nick in broadcast — **fixed 2026-08-08**. `oldNickname`
+      is now captured before `setNickname()` overwrites it.
+- [x] `handleNick`: broadcast on a client's first NICK — **fixed 2026-08-08**. Now
+      only broadcasts when `oldNickname` was non-empty (a genuine rename), not on
+      initial registration. Audience is still "every connected client" rather than
+      "clients sharing a channel with you" — that half needs channels (Phase 3) and
+      is still open; also still true that the sender itself is never notified of its
+      own successful NICK, valid or redundant (separate gap, not fixed here).
+- [ ] **Re-setting to the SAME nickname you already have still broadcasts a no-op
+      `NICK` change to everyone else** (e.g. already `ha`, send `NICK ha` again →
+      others see `:ha NICK ha`). The 2026-08-08 fix only distinguishes "first NICK
+      ever" (`oldNickname` empty → silent) from "any later NICK" (`oldNickname`
+      non-empty → broadcast) — it doesn't check whether the name actually *changed*.
+      `isNicknameInUse()` also doesn't flag this case, since it excludes the client's
+      own fd, so the redundant NICK is accepted as if it were a real rename. Fix
+      direction: in `handleNick`, if `newNickname == oldNickname`, treat as a no-op —
+      skip both the "already in use" logic (moot) and the broadcast.
 - [ ] `PASS` sent *after* successful registration is re-processed (wrong pw just
       logs an error) — must answer `462 ERR_ALREADYREGISTRED` and leave auth
       state untouched (also listed in Phase 2 numerics).

@@ -63,18 +63,20 @@ void Server::handleNick(const Message &msg, int clientFd)
 		std::cerr << "Error: Nickname already in use." << std::endl;
 		return;
 	}
-	// 4. Store nickname in Client object
+	// 4. Store nickname in Client object — capture the OLD nickname before
+	// overwriting it (previously read after the write, so old==new always)
 	Client *client = getClient(clientFd);
-	if (client)
+	if (!client)
+		return;
+	std::string oldNickname = client->getNickname();
+	std::string newNickname = msg.getParams()[0];
+	client->setNickname(newNickname);
+
+	// 5. Notify others only on a genuine change — a client's first NICK
+	// (during registration, oldNickname empty) has no previous identity to
+	// announce, so real IRC doesn't broadcast it
+	if (!oldNickname.empty())
 	{
-		client->setNickname(msg.getParams()[0]);
-	}
-	// 5. Notify others if nickname changes
-	if (client && !client->getNickname().empty())
-	{
-		std::string oldNickname = client->getNickname();
-		std::string newNickname = msg.getParams()[0];
-		// Notify other clients about the nickname change
 		for (std::map<int, Client *>::iterator it = _clients.begin(); it != _clients.end(); ++it)
 		{
 			if (it->second && it->second->getFd() != clientFd) // Exclude the current client
