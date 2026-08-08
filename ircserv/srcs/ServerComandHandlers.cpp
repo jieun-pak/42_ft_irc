@@ -1,7 +1,7 @@
 #include "../includes/Server.hpp"
 #include "../includes/Channel.hpp"
 #include <algorithm>
-#include <cstdlib> // For std::stoi
+#include <cstdlib> // For std::atoi
 
 void Server::handlePass(const Message &msg, int clientFd)
 {
@@ -253,7 +253,7 @@ void Server::handleMode(const Message &msg, int clientFd)
 			break;
 		case 'l':
 			// Handle +l (user limit)
-			_channels[msg.getParams()[0]]->setUserLimit(std::stoi(msg.getParams()[2]));
+			_channels[msg.getParams()[0]]->setUserLimit(std::atoi(msg.getParams()[2].c_str()));
 			break;
 		case 'b':
 			// Handle +b (banned users)

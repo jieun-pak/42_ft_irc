@@ -107,6 +107,33 @@ void Channel::setTopic(const std::string &topic)
 	_topic = topic;
 }
 
+void Channel::setPassword(const std::string &password)
+{
+	_password = password;
+}
+
+void Channel::setUserLimit(size_t userLimit)
+{
+	_userLimit = userLimit;
+}
+
+void Channel::addBannedUser(const std::string &user)
+{
+	_bannedUsers.push_back(user);
+}
+
+void Channel::removeBannedUser(const std::string &user)
+{
+	for (std::vector<std::string>::iterator it = _bannedUsers.begin(); it != _bannedUsers.end(); ++it)
+	{
+		if (*it == user)
+		{
+			_bannedUsers.erase(it);
+			break;
+		}
+	}
+}
+
 // Broadcast a message to all members of the channel except the sender
 void Channel::broadcastMessage(const std::string &message, Client *sender)
 {

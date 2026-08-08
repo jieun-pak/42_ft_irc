@@ -10,8 +10,10 @@ Team working doc for the `ircserv` implementation. Detailed Phase 1 design/decis
 
 - [x] Phase 1 — Skeleton + server loop (socket → poll() → accept)
 - [~] Phase 2 — Registration (PASS / NICK / USER → 001 RPL_WELCOME)
-- [ ] Phase 3 — Channels + messaging (JOIN / PRIVMSG / PART / QUIT)
-- [ ] Phase 4 — Operator commands (KICK / INVITE / TOPIC / MODE i,t,k,o,l)
+- [~] Phase 3 — Channels + messaging (JOIN / PRIVMSG / PART / QUIT) — JOIN implemented but has a crash bug; PRIVMSG/PART/QUIT still empty
+- [~] Phase 4 — Operator commands (KICK / INVITE / TOPIC / MODE i,t,k,o,l) — MODE drafted but not wired into the dispatcher (dead code); no operator concept yet; KICK/INVITE/TOPIC not started
+
+> Build is currently BROKEN: `std::stoi` (C++11) used in `ServerComandHandlers.cpp:256` — does not compile under `-std=c++98`. See Bugs section below.
 
 > `[x]` done · `[~]` in progress · `[ ]` not started
 
@@ -44,19 +46,33 @@ Team working doc for the `ircserv` implementation. Detailed Phase 1 design/decis
 - [ ] `Server::parse()` must support the trailing `:` param (rest-of-line-as-one-arg) —
       right now `USER jin 0 * :Jin Park` stores realname as `":Jin"` and drops `"Park"`
 
-### Phase 3 — Channels + messaging (not started)
-- [ ] `Channel` class: name, members, ops, topic, key, user limit, mode flags
-- [ ] `JOIN`: create channel if missing, first joiner becomes op, send `RPL_NAMREPLY`/`RPL_ENDOFNAMES`
-- [ ] `PRIVMSG`: to a channel (broadcast to members) and to a nick (direct)
-- [ ] `PART`: remove from channel, broadcast, destroy channel if now empty
-- [ ] `QUIT`: remove from all joined channels, broadcast, close fd, clean up
+### Phase 3 — Channels + messaging (in progress)
+- [x] `Channel` class: name, members, topic, invite-only flag, password, user limit, banned-users list
+- [~] `JOIN`: creates channel if missing, adds member, sends `RPL_NOTOPIC`/`RPL_TOPIC` (331/332)
+      and `RPL_NAMREPLY`/`RPL_ENDOFNAMES` (353/366), broadcasts JOIN to channel —
+      **has a crash bug and an auth-check bug, see Bugs section**
+- [ ] first joiner does NOT become operator — `Channel` has no operator/op list at all yet
+      (needed for KICK/INVITE/TOPIC/MODE+o gating in Phase 4)
+- [ ] `PRIVMSG`: still an empty stub — to a channel (broadcast to members) and to a nick (direct)
+- [ ] `PART`: still an empty stub — remove from channel, broadcast, destroy channel if now empty
+- [ ] `QUIT`: still an empty stub — remove from all joined channels, broadcast, close fd, clean up
+- [ ] `Channel::broadcastMessage()` and `sendTopic()`/`sendNamesList()` call `send()` directly,
+      bypassing `queueSend()`/`POLLOUT` — violates the same subject rule D2 fixed in Phase 1;
+      needs converting (Channel has no access to `Server::queueSend`, needs a design decision)
+- [ ] `_channels` map entries (`new Channel(...)`) are never freed — the cleanup loop in
+      `Server::~Server()` is still commented out; now an active leak, not just a placeholder
 
-### Phase 4 — Operator commands (not started)
-- [ ] `KICK #channel nick [:reason]`
-- [ ] `INVITE nick #channel`
-- [ ] `TOPIC #channel [:newtopic]` (view vs set, gated by `+t`)
-- [ ] `MODE`: `+/-i` invite-only, `+/-t` topic lock, `+/-k <key>` password,
-      `+/-o <nick>` operator, `+/-l <limit>` user cap
+### Phase 4 — Operator commands (drafted, not functional)
+- [ ] `MODE` handler is written (`handleMode`, `+/-i`, `+/-k`, `+/-l`, `+/-b`) but **`CMD_MODE`
+      is missing from the `CommandType` enum, `getCommandType()`, and the `executeCommand()`
+      switch** — a client sending `MODE` currently falls through to `CMD_UNKNOWN` and does
+      nothing. Must wire it in before any of the below can even be reached.
+- [ ] `MODE +/-t` (topic lock to ops) and `MODE +/-o` (grant/revoke operator) are not implemented
+      at all (`+/-o` is impossible anyway until `Channel` has an operator list — see Phase 3)
+- [ ] `KICK #channel nick [:reason]` — not started
+- [ ] `INVITE nick #channel` — not started
+- [ ] `TOPIC #channel [:newtopic]` as its own command — not started (JOIN currently only
+      *shows* the topic on join; there's no way to *view or change* it afterward)
 
 ## Bugs / things to handle (found in manual testing, 2026-07-19)
 - [ ] `handleNick`: broadcast shows old nick == new nick (`:JIN NICK JIN`) —
@@ -72,6 +88,29 @@ Team working doc for the `ircserv` implementation. Detailed Phase 1 design/decis
       state untouched (also listed in Phase 2 numerics).
 - [ ] commands before registration (e.g. `hello` before `PASS`) are silently
       dropped — needs registration gating + `421`/`451` replies (Phase 2).
+
+## Bugs found in code review, 2026-08-08 (JOIN / MODE)
+- [ ] **BUILD BROKEN:** `std::stoi` used in `handleMode` (`ServerComandHandlers.cpp:256`,
+      `+l` limit parsing) does not exist in C++98 — `make` fails right now. Replace with
+      `std::atoi` (from `<cstdlib>`, already included) or a manual digit-string parser
+      with validation (`atoi` silently returns 0 on garbage input, which is a real risk
+      for `MODE #chan +l abc`).
+- [ ] **Root cause of the segfault in the "## Bugs" log below, confirmed:** in `handleJoin`,
+      `Channel *channel = NULL;` is only ever assigned in the "create new channel" branch
+      (`if (it == _channels.end()) { channel = new Channel(...); }`). When the channel
+      **already exists** (`it != _channels.end()`), `channel` is left NULL and every check
+      below it (`channel->getMembers()`, `channel->isInviteOnly()`, ...) dereferences NULL.
+      Fix: add an `else` that does `channel = it->second;`.
+- [ ] **Second bug in the same repro, also needs fixing:** the auth check
+      `if (!client->isPasswordAuthenticated() && !client->isUserReceived())` uses `&&`,
+      so it only rejects a client missing *both* PASS and USER — a client with just `PASS`
+      (no `USER`, and NICK isn't checked at all) slips past. Should be `||`, and should
+      probably check full registration state (PASS + NICK + USER), not just two of three.
+      This is what let the reproduction below reach the second, NULL-dereferencing `JOIN`.
+- [ ] "other clients can't communicate while one uses NICK" (below) — not yet re-verified
+      against the current code; D1 (one `recv()` per `POLLIN`, no drain loop) should already
+      rule out this class of freeze. Retest after the build is fixed; if it still reproduces,
+      it's a new bug, not the old blocking one.
 
 ---
 
