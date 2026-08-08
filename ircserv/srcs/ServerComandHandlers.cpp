@@ -228,8 +228,12 @@ void Server::handleJoin(const Message &msg, int clientFd)
 		sendNumericReply(clientFd, ERR_BANNEDFROMCHAN, replyTarget(client), channelName, "Cannot join channel (+b)");
 		return;
 	}
-	// 3. Add client to channel
-	channel->addMember(client);
+	if (!channel->addMember(client))
+	{
+		std::cerr << "Error: addMember() rejected " << client->getNickname()
+			<< " for " << channelName << " despite passing the pre-checks above." << std::endl;
+		return;
+	}
 	client->joinChannel(channelName);
 	// 4. TODO: Broadcast JOIN message
 	channel->broadcastMessage(":" + client->getNickname() + " JOIN " + channelName + "\r\n", client);

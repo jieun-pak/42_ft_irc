@@ -43,7 +43,10 @@ class Channel
 		bool isOperator(Client *client) const;
 
 		// setters
-		void addMember(Client *client);
+		// Returns false (no-op) if client is already a member or the channel is
+		// full — callers must check this instead of assuming success, since
+		// Channel has no way to tell them why beyond a server-side log line
+		bool addMember(Client *client);
 		void removeMember(Client *client);
 		void setTopic(const std::string &topic);
 		void setInviteOnly(bool inviteOnly);

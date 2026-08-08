@@ -89,26 +89,28 @@ bool Channel::isOperator(Client *client) const
 }
 
 // setters
-// Internal safety nets only — Channel has no Server* to call sendNumericReply()
-// through, so the real client-facing 443/471 replies are sent by
-// Server::handleJoin (which does have that access) before addMember() is ever
-// reached. These std::cerr checks just guard against a future caller that
-// forgets to pre-check.
-void Channel::addMember(Client *client)
+// Channel has no Server* to call sendNumericReply() through, so the real
+// client-facing 443/471 replies are sent by Server::handleJoin (which does
+// have that access) before addMember() is normally reached — these checks
+// are the authoritative ones, though; handleJoin's pre-checks exist only to
+// pick the right numeric to send, not to duplicate this method's logic. The
+// bool return means a caller can never mistake a silent no-op for success.
+bool Channel::addMember(Client *client)
 {
-	//check if the client is already a member
-	if (isMember(client)){
+	if (isMember(client))
+	{
 		std::cerr << "Error: Client is already a member of channel " << _name << std::endl;
-		return;
+		return false;
 	}
 
-	//check if the channel is full
-	if (isUserLimitReached()){
+	if (isUserLimitReached())
+	{
 		std::cerr << "Error: Channel " << _name << " is full." << std::endl;
-		return;
+		return false;
 	}
 
 	_members.push_back(client);
+	return true;
 }
 
 void Channel::removeMember(Client *client)
