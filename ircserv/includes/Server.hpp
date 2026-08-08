@@ -58,6 +58,9 @@ class Server
 
 		bool	isValidNickname(const std::string &nickname);
 		bool	isNicknameInUse(const std::string &nickname, int excludeFd);
+		// registration is order-independent: PASS/NICK/USER can arrive in any order,
+		// so completion is checked after each one, with a one-time guard on Client
+		void	checkRegistrationComplete(int clientFd);
 		bool	isValidChannelName(const std::string &channelName);
 		bool	isChannelExists(const std::string &channelName);
 		bool	isClientInChannel(Client *client, const std::string &channelName);

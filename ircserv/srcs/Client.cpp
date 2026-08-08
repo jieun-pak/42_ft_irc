@@ -12,9 +12,9 @@ const std::vector<std::string> &Message::getParams() const
 }
 
 // constructors
-Client::Client(int fd) : _fd(fd), _passwordAuthenticated(false), _nickname(""), _username(""), _realname(""), _isUserReceived(false) {}
+Client::Client(int fd) : _fd(fd), _passwordAuthenticated(false), _nickname(""), _username(""), _realname(""), _isUserReceived(false), _registered(false) {}
 Client::~Client() {}
-Client::Client(const Client &other) : _fd(other._fd), _readBuf(other._readBuf), _writeBuf(other._writeBuf), _passwordAuthenticated(other._passwordAuthenticated), _nickname(other._nickname), _username(other._username), _realname(other._realname), _isUserReceived(other._isUserReceived) {}
+Client::Client(const Client &other) : _fd(other._fd), _readBuf(other._readBuf), _writeBuf(other._writeBuf), _passwordAuthenticated(other._passwordAuthenticated), _nickname(other._nickname), _username(other._username), _realname(other._realname), _isUserReceived(other._isUserReceived), _registered(other._registered) {}
 Client &Client::operator=(const Client &other)
 {
 	if (this != &other)
@@ -24,6 +24,7 @@ Client &Client::operator=(const Client &other)
 		_writeBuf = other._writeBuf;
 		_passwordAuthenticated = other._passwordAuthenticated;
 		_isUserReceived = other._isUserReceived;
+		_registered = other._registered;
 		_nickname = other._nickname;
 		_username = other._username;
 		_realname = other._realname;
@@ -122,6 +123,15 @@ bool Client::isUserReceived() const
 void Client::setUserReceived(bool received)
 {
 	_isUserReceived = received;
+}
+
+bool Client::isRegistered() const
+{
+	return _registered;
+}
+void Client::setRegistered(bool registered)
+{
+	_registered = registered;
 }
 
 void Client::joinChannel(const std::string &channelName)

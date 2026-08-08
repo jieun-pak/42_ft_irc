@@ -180,22 +180,34 @@ Message Server::parse(const std::string& line)
 	std::vector<std::string> params;
 
 	size_t pos = line.find(' ');
-	if (pos != std::string::npos)
-	{
-		command = line.substr(0, pos);
-		std::string paramStr = line.substr(pos + 1);
-		size_t start = 0;
-		while ((pos = paramStr.find(' ', start)) != std::string::npos)
-		{
-			params.push_back(paramStr.substr(start, pos - start));
-			start = pos + 1;
-		}
-		if (start < paramStr.length())
-			params.push_back(paramStr.substr(start));
-	}
-	else
+	if (pos == std::string::npos)
 	{
 		command = line; // No parameters, entire line is command
+		return Message(command, params);
+	}
+
+	command = line.substr(0, pos);
+	std::string paramStr = line.substr(pos + 1);
+
+	size_t start = 0;
+	while (start < paramStr.length())
+	{
+		// trailing parameter (leading ':'): rest of the line, spaces and all,
+		// is a single param — e.g. "USER jin 0 * :Jin Park" -> last param "Jin Park"
+		if (paramStr[start] == ':')
+		{
+			params.push_back(paramStr.substr(start + 1));
+			break;
+		}
+
+		pos = paramStr.find(' ', start);
+		if (pos == std::string::npos)
+		{
+			params.push_back(paramStr.substr(start));
+			break;
+		}
+		params.push_back(paramStr.substr(start, pos - start));
+		start = pos + 1;
 	}
 
 	return Message(command, params);

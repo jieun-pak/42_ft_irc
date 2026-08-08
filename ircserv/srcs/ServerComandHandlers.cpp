@@ -23,6 +23,24 @@ void Server::handlePass(const Message &msg, int clientFd)
 	{
 		client->setPasswordAuthenticated(true);
 	}
+	checkRegistrationComplete(clientFd);
+}
+
+// Registration is order-independent (PASS/NICK/USER can arrive in any order),
+// so this is called after each of the three instead of only after USER.
+// The isRegistered() guard makes it fire exactly once, which also stops a
+// later re-send of PASS/USER from re-triggering the welcome message.
+void Server::checkRegistrationComplete(int clientFd)
+{
+	Client *client = getClient(clientFd);
+	if (!client || client->isRegistered())
+		return;
+	if (client->isPasswordAuthenticated() && !client->getNickname().empty() && client->isUserReceived())
+	{
+		client->setRegistered(true);
+		std::string welcomeMessage = "Welcome to the IRC server, " + client->getNickname() + "!\r\n";
+		queueSend(clientFd, welcomeMessage);
+	}
 }
 
 void Server::handleNick(const Message &msg, int clientFd)
@@ -66,6 +84,7 @@ void Server::handleNick(const Message &msg, int clientFd)
 			}
 		}
 	}
+	checkRegistrationComplete(clientFd);
 }
 
 void Server::handleUser(const Message &msg, int clientFd)
@@ -87,13 +106,7 @@ void Server::handleUser(const Message &msg, int clientFd)
 	// 3. Mark USER as received (you can set a flag in the Client class if needed)
 	client->setUserReceived(true);
 
-	// 4. Check if registration is now complete
-	if (client && client->isPasswordAuthenticated() && !client->getNickname().empty() && client->isUserReceived())
-	{
-		// Registration is complete, you can send a welcome message or perform other actions
-		std::string welcomeMessage = "Welcome to the IRC server, " + client->getNickname() + "!\r\n";
-		queueSend(clientFd, welcomeMessage); //send()
-	}
+	checkRegistrationComplete(clientFd);
 }
 
 // JOIN command halpers
@@ -133,8 +146,6 @@ void Server::sendNamesList(Channel *channel, Client *client)
 
 void Server::handleJoin(const Message &msg, int clientFd)
 {
-	(void)msg;
-	(void)clientFd;
 	// 0. Validate parameters
 	if (msg.getParams().size() < 1)
 	{
@@ -153,7 +164,15 @@ void Server::handleJoin(const Message &msg, int clientFd)
 		std::cerr << "Error: Invalid channel name format." << std::endl;
 		return;
 	}
-	// 1. Find or create channel
+	// 1. Client must be fully registered (PASS+NICK+USER) before touching any
+	// channel state — checked BEFORE find-or-create so a rejected client can't
+	// leave a phantom empty channel behind in _channels
+	if (!client->isRegistered())
+	{
+		std::cerr << "Error: Client must be authenticated before joining a channel." << std::endl;
+		return;
+	}
+	// 2. Find or create channel
 	std::string channelName = msg.getParams()[0];
 	std::map<std::string, Channel *>::iterator it = _channels.find(channelName);
 	Channel *channel = NULL;
@@ -163,13 +182,12 @@ void Server::handleJoin(const Message &msg, int clientFd)
 		channel = new Channel(channelName);
 		_channels[channelName] = channel;
 	}
-
-	// 2. Check channel restrictions
-	if (!client->isPasswordAuthenticated() && !client->isUserReceived())
+	else
 	{
-		std::cerr << "Error: Client must be authenticated before joining a channel." << std::endl;
-		return;
+		channel = it->second;
 	}
+
+	// 3. Check channel restrictions
 	if (channel->getMembers().end() != std::find(channel->getMembers().begin(), channel->getMembers().end(), client))
 	{
 		std::cerr << "Error: Client is already a member of channel " << channelName << std::endl;

@@ -38,13 +38,16 @@ Team working doc for the `ircserv` implementation. Detailed Phase 1 design/decis
 ### Phase 2 — Registration (PASS / NICK / USER)
 - [x] `handlePass` / `handleNick` / `handleUser` drafted with real logic
 - [x] make it compile
+- [x] when (PASS->NICK->USER) or (PASS->USER->NICK) is completed, display welcome message
 - [ ] reply with real IRC numerics instead of `std::cerr`/ad-hoc strings:
       `001 RPL_WELCOME`, `433 ERR_NICKNAMEINUSE`, `464 ERR_PASSWDMISMATCH`,
       `451 ERR_NOTREGISTERED`, `461 ERR_NEEDMOREPARAMS`, `421 ERR_UNKNOWNCOMMAND`,
       `462 ERR_ALREADYREGISTRED` (found in testing: `PASS` after registration is currently re-processed)
 - [ ] gate all non-registration commands behind "is this client registered yet?"
-- [ ] `Server::parse()` must support the trailing `:` param (rest-of-line-as-one-arg) —
-      right now `USER jin 0 * :Jin Park` stores realname as `":Jin"` and drops `"Park"`
+- [x] `Server::parse()` supports the trailing `:` param (rest-of-line-as-one-arg, 2026-08-08) —
+      `USER jin 0 * :Jin Park` now yields realname `"Jin Park"`; also fixes multi-word
+      `PRIVMSG #chan :hello world` — verified via `nc` (hand-traced params, no debug
+      print of stored values yet; add one if you want to see it live during WHOIS/etc.)
 
 ### Phase 3 — Channels + messaging (in progress)
 - [x] `Channel` class: name, members, topic, invite-only flag, password, user limit, banned-users list
@@ -90,27 +93,34 @@ Team working doc for the `ircserv` implementation. Detailed Phase 1 design/decis
       dropped — needs registration gating + `421`/`451` replies (Phase 2).
 
 ## Bugs found in code review, 2026-08-08 (JOIN / MODE)
-- [ ] **BUILD BROKEN:** `std::stoi` used in `handleMode` (`ServerComandHandlers.cpp:256`,
-      `+l` limit parsing) does not exist in C++98 — `make` fails right now. Replace with
-      `std::atoi` (from `<cstdlib>`, already included) or a manual digit-string parser
-      with validation (`atoi` silently returns 0 on garbage input, which is a real risk
-      for `MODE #chan +l abc`).
-- [ ] **Root cause of the segfault in the "## Bugs" log below, confirmed:** in `handleJoin`,
-      `Channel *channel = NULL;` is only ever assigned in the "create new channel" branch
-      (`if (it == _channels.end()) { channel = new Channel(...); }`). When the channel
-      **already exists** (`it != _channels.end()`), `channel` is left NULL and every check
-      below it (`channel->getMembers()`, `channel->isInviteOnly()`, ...) dereferences NULL.
-      Fix: add an `else` that does `channel = it->second;`.
-- [ ] **Second bug in the same repro, also needs fixing:** the auth check
-      `if (!client->isPasswordAuthenticated() && !client->isUserReceived())` uses `&&`,
-      so it only rejects a client missing *both* PASS and USER — a client with just `PASS`
-      (no `USER`, and NICK isn't checked at all) slips past. Should be `||`, and should
-      probably check full registration state (PASS + NICK + USER), not just two of three.
-      This is what let the reproduction below reach the second, NULL-dereferencing `JOIN`.
+- [x] **BUILD BROKEN:** `std::stoi` (C++11) in `handleMode`'s `+l` parsing — fixed,
+      replaced with `std::atoi`.
+- [x] **Segfault root cause, fixed:** `handleJoin`'s `Channel *channel = NULL;` is now
+      assigned in both branches (`else { channel = it->second; }` added for the
+      "channel already exists" case) — this is the normal case for a second person
+      joining an existing channel, so it wasn't just your repro's edge case.
+- [x] **Auth-check bug, fixed:** replaced the `&&`-based partial check with
+      `!client->isRegistered()` (the guarded, authoritative flag added for the
+      registration-order fix below) — now correctly requires PASS + NICK + USER,
+      not just two of three. Also **moved the check before channel lookup/creation**,
+      so a rejected client can no longer leave a phantom empty channel in `_channels`
+      (a bug I found while fixing this — every failed early JOIN attempt was silently
+      creating a permanent empty `Channel` object that nothing ever cleaned up).
 - [ ] "other clients can't communicate while one uses NICK" (below) — not yet re-verified
       against the current code; D1 (one `recv()` per `POLLIN`, no drain loop) should already
-      rule out this class of freeze. Retest after the build is fixed; if it still reproduces,
+      rule out this class of freeze. Retest now that the build is fixed; if it still reproduces,
       it's a new bug, not the old blocking one.
+
+## Bug found in manual testing, 2026-08-08 (registration order-dependency)
+- [x] **Welcome message never fired if `NICK` arrived after `USER` — fixed.** The
+      "registration complete?" check moved out of `handleUser()` alone into a shared
+      `Server::checkRegistrationComplete()`, now called after `PASS`, `NICK`, and `USER`
+      each, guarded by a new `Client::isRegistered()` flag so it fires exactly once
+      regardless of order. `PASS → NICK → USER` still works, and `PASS → USER → NICK`
+      (the order that used to silently fail — nickname was still empty when the old
+      check ran only inside `handleUser()`) now completes correctly too. The guard also
+      fixes the earlier double-welcome-on-repeat-`USER`/`PASS` bug, and `Client::isRegistered()`
+      is now the shared source of truth used by `handleJoin`'s auth check above.
 
 ---
 
@@ -137,17 +147,58 @@ make re         # full rebuild from scratch
 ```
 
 ## 2. Start the server
+
+### Window layout (used from here on)
+- **Scenario A (default):** Window 1 = server, Window 2 = client 1, Window 3 = client 2.
+  Enough for authentication, single-target commands (KICK/INVITE one user), and any test
+  that only needs "did the *other* client see this" — see "Answering the question" above
+  for why 2 clients is the practical minimum once channels are involved.
+- **Scenario B (only if needed):** adds Window 4 = client 3. Reach for this specifically to
+  verify a broadcast reaches **every** member, not just the one you happened to test with
+  (real risk once `PRIVMSG`/`JOIN`/`KICK` iterate a member list) — not needed for routine testing.
+
+For this section (starting the server itself) no clients are involved yet, so only Window 1 matters.
+
+### Happy path
 ```bash
 ./ircserv 6667 mypassword
 ```
-Also test bad args — the server must refuse and not crash:
+- **Window 1:** process starts and blocks in `poll()` — **currently prints nothing at all**
+  on success (no "listening on port X" banner). That's not a subject violation, but it means
+  "did it actually start?" is only verifiable by a client managing to connect — worth keeping
+  in mind while testing so silence isn't mistaken for a hang.
+- **Window 2/3:** not opened yet — nothing to check at this step.
+
+**Immediate shutdown + restart (still happy path):** Ctrl+C in Window 1 right after starting.
+- **Window 1:** prints `Server shutting down` (D6) and exits — NOT `poll error`.
+- Rerun `./ircserv 6667 mypassword` immediately: must bind successfully right away — no
+  `Error binding socket` wait (D7 / `SO_REUSEADDR`). If you see that message here, it's a regression.
+
+### Unhappy path (bad args — must refuse and NOT crash, per subject Ch. II)
 ```bash
-./ircserv                 # usage message
-./ircserv 99999 pw        # invalid port
-./ircserv 6667 ""         # empty password
+./ircserv                 # Window 1: "Usage: ./ircserv <port> <password>", exit 1, no listen
+./ircserv 6667             # Window 1: same usage message (argc != 3), exit 1
+./ircserv abc mypassword  # Window 1: "Invalid port number", exit 1 — atoi("abc") -> 0, caught by port <= 0 check
+./ircserv 99999 pw        # Window 1: "Invalid port number", exit 1 (out of 1-65535 range)
+./ircserv 0 pw            # Window 1: "Invalid port number", exit 1 (0 rejected by port <= 0, no special "any free port" handling — expected, subject doesn't ask for that)
+./ircserv 6667 ""         # Window 1: "Password cannot be empty", exit 1
 ```
-> `SO_REUSEADDR` is set (D7), so restarting immediately after Ctrl+C must succeed —
-> if you ever see "Error binding socket", that's a regression.
+In every case: process must exit cleanly with no listening socket left behind (verify with
+`ps aux | grep ircserv | grep -v grep` — should show nothing after each of these).
+
+### Edge cases
+- **Port already in use:** start `./ircserv 6667 pw` in Window 1 and leave it running.
+  In a *second* server window (not a client — a second server instance), run
+  `./ircserv 6667 pw` again.
+  - **Window 1:** unaffected, keeps running.
+  - **New window:** `bind()` fails with `EADDRINUSE` → prints `Error binding socket`, exit 1.
+    This is the one case where seeing that message is *correct*, not a regression.
+- **Privileged port (< 1024), e.g. `./ircserv 80 pw`:** on most setups (including unprivileged
+  42 accounts) `bind()` fails with `EACCES` → same `Error binding socket` message. Not a bug —
+  just don't mistake it for the `SO_REUSEADDR` regression above; pick a port ≥ 1024 for testing.
+- **Extra/missing whitespace or non-ASCII in password:** e.g. `./ircserv 6667 "pw with spaces"`
+  (quoted, so it's one argument) — should start normally; the password is only ever compared
+  as a whole string by `PASS`, no parsing of its contents happens at startup.
 
 ## 3. Basic connection + multi-client
 ```bash

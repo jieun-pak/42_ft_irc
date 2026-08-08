@@ -30,6 +30,7 @@ class Client
 		std::string		_username;
 		std::string		_realname;
 		bool			_isUserReceived;
+		bool			_registered;
 		std::vector<std::string>	_joinedChannels;
 
 	public:
@@ -63,6 +64,9 @@ class Client
 
 		bool						isUserReceived() const;
 		void						setUserReceived(bool received);
+
+		bool						isRegistered() const;
+		void						setRegistered(bool registered);
 
 		void						joinChannel(const std::string &channelName);
 };
