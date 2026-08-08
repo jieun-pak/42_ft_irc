@@ -1,0 +1,18 @@
+{
+	"configurations": [
+		{
+			"name": "Linux",
+			"compilerPath": "/usr/bin/c++",
+			"cStandard": "c17",
+			"cppStandard": "c++98",
+			"intelliSenseMode": "linux-gcc-x64",
+			"includePath": [
+				"${workspaceFolder}/ircserv/includes",
+				"${workspaceFolder}/ircserv/srcs"
+			],
+			"defines": [],
+			"compileCommands": "${workspaceFolder}/compile_commands.json"
+		}
+	],
+	"version": 4
+}

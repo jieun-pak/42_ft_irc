@@ -9,7 +9,7 @@ Team working doc for the `ircserv` implementation. Detailed Phase 1 design/decis
 # General implementation plan
 
 - [x] Phase 1 — Skeleton + server loop (socket → poll() → accept)
-- [~] Phase 2 — Registration (PASS / NICK / USER → 001 RPL_WELCOME)
+- [x] Phase 2 — Registration (PASS / NICK / USER → 001 RPL_WELCOME)
 - [~] Phase 3 — Channels + messaging (JOIN / PRIVMSG / PART / QUIT) — JOIN implemented but has a crash bug; PRIVMSG/PART/QUIT still empty
 - [~] Phase 4 — Operator commands (KICK / INVITE / TOPIC / MODE i,t,k,o,l) — MODE drafted but not wired into the dispatcher (dead code); no operator concept yet; KICK/INVITE/TOPIC not started
 
@@ -39,11 +39,23 @@ Team working doc for the `ircserv` implementation. Detailed Phase 1 design/decis
 - [x] `handlePass` / `handleNick` / `handleUser` drafted with real logic
 - [x] make it compile
 - [x] when (PASS->NICK->USER) or (PASS->USER->NICK) is completed, display welcome message
-- [ ] reply with real IRC numerics instead of `std::cerr`/ad-hoc strings:
+- [x] reply with real IRC numerics instead of `std::cerr`/ad-hoc strings — **2026-08-08**:
       `001 RPL_WELCOME`, `433 ERR_NICKNAMEINUSE`, `464 ERR_PASSWDMISMATCH`,
       `451 ERR_NOTREGISTERED`, `461 ERR_NEEDMOREPARAMS`, `421 ERR_UNKNOWNCOMMAND`,
-      `462 ERR_ALREADYREGISTRED` (found in testing: `PASS` after registration is currently re-processed)
-- [ ] gate all non-registration commands behind "is this client registered yet?"
+      `462 ERR_ALREADYREGISTRED` (closes the "`PASS`/`USER` re-processed after
+      registration" bug). New `includes/Replies.hpp` (numeric enum) +
+      `Server::sendNumericReply()`/`replyTarget()` (`Server.cpp`) format every reply
+      as `:ircserv <code> <target>[ <middleParam>] :<trailing>\r\n`. Also used to fix
+      `sendTopic()`/`sendNamesList()` (Phase 3), which were emitting `331`/`332`/`353`/`366`
+      **without** the leading `:ircserv ` — found by comparing against a teammate's
+      reference implementation, not by manual testing.
+- [x] gate all non-registration commands behind "is this client registered yet?" —
+      **2026-08-08**, two-stage gate in `executeCommand()`: (1) **`PASS` is the
+      gatekeeper** — until `PASS` succeeds, every other command (including `NICK`/`USER`)
+      gets `451` immediately, so an unauthenticated connection can no longer probe
+      state via e.g. `NICK` → `433`; (2) once `PASS` succeeds, only `PASS`/`NICK`/`USER`
+      are allowed until registration completes, everything else gets `451`.
+      `CMD_UNKNOWN` gets `421` before either gate is checked.
 - [x] `Server::parse()` supports the trailing `:` param (rest-of-line-as-one-arg, 2026-08-08) —
       `USER jin 0 * :Jin Park` now yields realname `"Jin Park"`; also fixes multi-word
       `PRIVMSG #chan :hello world` — verified via `nc` (hand-traced params, no debug
@@ -86,20 +98,19 @@ Team working doc for the `ircserv` implementation. Detailed Phase 1 design/decis
       "clients sharing a channel with you" — that half needs channels (Phase 3) and
       is still open; also still true that the sender itself is never notified of its
       own successful NICK, valid or redundant (separate gap, not fixed here).
-- [ ] **Re-setting to the SAME nickname you already have still broadcasts a no-op
-      `NICK` change to everyone else** (e.g. already `ha`, send `NICK ha` again →
-      others see `:ha NICK ha`). The 2026-08-08 fix only distinguishes "first NICK
-      ever" (`oldNickname` empty → silent) from "any later NICK" (`oldNickname`
-      non-empty → broadcast) — it doesn't check whether the name actually *changed*.
-      `isNicknameInUse()` also doesn't flag this case, since it excludes the client's
-      own fd, so the redundant NICK is accepted as if it were a real rename. Fix
-      direction: in `handleNick`, if `newNickname == oldNickname`, treat as a no-op —
-      skip both the "already in use" logic (moot) and the broadcast.
-- [ ] `PASS` sent *after* successful registration is re-processed (wrong pw just
-      logs an error) — must answer `462 ERR_ALREADYREGISTRED` and leave auth
-      state untouched (also listed in Phase 2 numerics).
-- [ ] commands before registration (e.g. `hello` before `PASS`) are silently
-      dropped — needs registration gating + `421`/`451` replies (Phase 2).
+- [x] **Re-setting to the SAME nickname you already have still broadcast a no-op
+      `NICK` change to everyone else — fixed 2026-08-08.** New guard at the top of
+      `handleNick` (before the "already in use" check): if the requested nickname
+      equals the client's current one, treat it as a no-op — call
+      `checkRegistrationComplete()` (harmless if already registered) and return,
+      skipping both `isNicknameInUse()` (which excludes the client's own fd and
+      would've said "not in use") and the broadcast.
+- [x] `PASS` sent *after* successful registration is re-processed — **fixed
+      2026-08-08**, now answers `462 ERR_ALREADYREGISTRED` and leaves auth state
+      untouched (Phase 2 numerics).
+- [x] commands before registration (e.g. `hello` before `PASS`) are silently
+      dropped — **fixed 2026-08-08**, registration gating in `executeCommand()`
+      now answers `421`/`451` (Phase 2).
 
 ## Bugs found in code review, 2026-08-08 (JOIN / MODE)
 - [x] **BUILD BROKEN:** `std::stoi` (C++11) in `handleMode`'s `+l` parsing — fixed,
@@ -115,10 +126,10 @@ Team working doc for the `ircserv` implementation. Detailed Phase 1 design/decis
       so a rejected client can no longer leave a phantom empty channel in `_channels`
       (a bug I found while fixing this — every failed early JOIN attempt was silently
       creating a permanent empty `Channel` object that nothing ever cleaned up).
-- [ ] "other clients can't communicate while one uses NICK" (below) — not yet re-verified
-      against the current code; D1 (one `recv()` per `POLLIN`, no drain loop) should already
-      rule out this class of freeze. Retest now that the build is fixed; if it still reproduces,
-      it's a new bug, not the old blocking one.
+- [ ] originally reported: "other clients can't communicate while one uses NICK" — not yet
+      re-verified against the current code; D1 (one `recv()` per `POLLIN`, no drain loop)
+      should already rule out this class of freeze. Retest now that the build is fixed; if
+      it still reproduces, it's a new bug, not the old blocking one.
 
 ## Bug found in manual testing, 2026-08-08 (registration order-dependency)
 - [x] **Welcome message never fired if `NICK` arrived after `USER` — fixed.** The
@@ -142,11 +153,13 @@ Team working doc for the `ircserv` implementation. Detailed Phase 1 design/decis
 | `make` / `make re` clean build (C++98, `-Wall -Wextra -Werror`) | [x] |
 | Accepts one or many `nc` clients through one `poll()` | [x] |
 | Buffers partial input, splits on `\r\n` / `\n` | [x] |
-| `PASS` → `NICK` → `USER` → welcome text | [x] plain text, **not** numeric `001` yet |
-| Errors (wrong pass, dup nick) | [~] printed on **server** stderr only — client gets nothing |
-| Unknown command | [~] silently ignored (no `421` yet) |
-| Real IRC client (irssi) full registration | [ ] irssi waits for numeric `001` — not sent yet |
-| `JOIN` / `PRIVMSG` / `PART` / `QUIT` | [ ] empty stubs |
+| `PASS` → `NICK` → `USER` → welcome | [x] real numeric `001 RPL_WELCOME` |
+| Errors (wrong pass, dup nick, missing params, etc.) | [x] real numerics to the client (`464`/`433`/`461`/`462`/`451`) — **and** still logged on server stderr |
+| Unknown command | [x] `421 ERR_UNKNOWNCOMMAND` |
+| Commands before `PASS` succeeds, or before registration completes | [x] `451 ERR_NOTREGISTERED` (`PASS` is the gatekeeper — see Phase 2) |
+| Real IRC client (irssi) full registration | [~] `001` now sent — not yet live-verified against irssi |
+| `JOIN` | [~] works, sends `331`/`332`/`353`/`366` + broadcasts `JOIN` to the channel — no operator concept yet |
+| `PRIVMSG` / `PART` / `QUIT` | [ ] empty stubs |
 
 ## 1. Build checks
 ```bash
@@ -226,7 +239,10 @@ PASS mypassword
 NICK jin
 USER jin 0 * :Jin Park
 ```
-Expected reply on the client: `Welcome to the IRC server, jin!`
+Expected reply on the client (after `USER`, once all three are done — order-independent):
+```
+:ircserv 001 jin :Welcome to the IRC server, jin!
+```
 
 Scripted one-liner (real TCP, exercises the line-splitting too since all 3 commands
 arrive as one packet):
@@ -236,14 +252,64 @@ printf "PASS mypassword\r\nNICK jin\r\nUSER jin 0 * :Jin Park\r\n" | nc -q1 loca
 (`printf` not `echo`: reliably emits the `\r\n` CRLF endings IRC requires.
 `-q1`: nc exits 1s after stdin ends instead of hanging.)
 
-## 5. Registration — error paths
-```bash
-# wrong password → currently: error on server stderr, client sees nothing (numeric 464 is TODO)
-printf "PASS wrongpw\r\nNICK jin\r\nUSER jin 0 * :Jin\r\n" | nc -q1 localhost 6667
+## 5. Per-command test matrix (Scenario A: 2 clients, Window 2 = client 1, Window 3 = client 2)
 
-# duplicate nick → open two clients, send same NICK; second must be rejected (433 is TODO)
-# missing params → "PASS", "NICK", "USER x" alone must not crash the server
-```
+Each command below: happy path, then unhappy/edge cases, with which window sees what.
+Server started as `./ircserv 6667 mypassword` in Window 1 throughout.
+
+### PASS
+- **Happy:** `PASS mypassword` — no reply yet (IRC doesn't ACK `PASS` on its own;
+  confirmation only comes via `001` once `NICK`+`USER` also land).
+- **Unhappy — wrong password:** `PASS wrongpw` → Window 2: `:ircserv 464 * :Password incorrect`.
+- **Unhappy — missing param:** `PASS` alone → Window 2: `:ircserv 461 * PASS :Not enough parameters`.
+- **Unhappy — already registered:** after full registration, send `PASS mypassword` again →
+  Window 2: `:ircserv 462 * :You may not reregister`; auth state untouched.
+- **Edge — gatekeeper, any command before `PASS` succeeds:** open Window 2, send `NICK jinn`
+  *before* `PASS` → Window 2: `:ircserv 451 * :You have not registered` (not `433`, even
+  though `jinn` may be free — `PASS` must succeed first, checked before any other handler runs).
+  Only after that does `PASS mypassword` get accepted.
+
+### NICK
+- **Happy — first NICK during registration:** `NICK jin` (before registration completes) →
+  no broadcast to Window 3 (a client's very first nickname isn't a "change" from anything).
+- **Happy — rename after registration:** both clients registered as `jin`/`ha`; Window 2 sends
+  `NICK jinny` → Window 3 sees `:jin NICK jinny` (Window 2 itself is not echoed the change).
+- **Unhappy — missing param:** `NICK` alone → Window 2: `:ircserv 461 * NICK :Not enough parameters`.
+- **Unhappy — duplicate nickname:** Window 3 is `ha`; Window 2 sends `NICK ha` →
+  Window 2: `:ircserv 433 * ha :Nickname is already in use`; Window 2's nickname unchanged.
+- **Edge — resetting to the SAME nickname (fixed 2026-08-08):** Window 2 is already `jin`,
+  sends `NICK jin` again → no reply, no broadcast to Window 3 — treated as a no-op.
+
+### USER
+- **Happy:** `USER jin 0 * :Jin Park` — no direct reply (silent, like `PASS`); only
+  contributes to the eventual `001` once `PASS`+`NICK` also land. Realname with spaces
+  (`:Jin Park`) must survive intact — verifies `Server::parse()`'s trailing-`:` handling.
+- **Unhappy — missing params:** `USER jin 0 *` (only 3 params) → Window 2:
+  `:ircserv 461 * USER :Not enough parameters`.
+- **Unhappy — already registered:** send `USER` again after full registration → Window 2:
+  `:ircserv 462 * :You may not reregister`; username/realname untouched (previously this
+  silently overwrote them and re-sent the welcome — fixed).
+
+### JOIN
+- **Happy — first member creates the channel:** registered Window 2 sends `JOIN #general` →
+  Window 2 gets `:ircserv 331 jin #general :No topic is set` then
+  `:ircserv 353 jin = #general :jin ` then `:ircserv 366 jin #general :End of /NAMES list`.
+  Window 3 (not in the channel) sees nothing.
+- **Happy — second member joins existing channel:** Window 3 (`ha`) sends `JOIN #general` →
+  Window 3 gets the same 331/332+353/366 sequence (now listing both nicks); Window 2
+  (already in `#general`) sees `:ha JOIN #general`.
+- **Unhappy — missing channel param:** `JOIN` alone → Window 2:
+  `:ircserv 461 * JOIN :Not enough parameters`.
+- **Unhappy — before registration:** unregistered client sends `JOIN #general` → covered by
+  the general gate: `:ircserv 451 * :You have not registered` (not JOIN-specific anymore —
+  `handleJoin`'s own auth check was removed once `executeCommand()` started gating).
+- **Edge — invalid channel name (no `#` prefix):** `JOIN general` → currently **silent**,
+  only logged on the server (`Error: Invalid channel name format.`) — no `476` reply to the
+  client yet (documented gap, out of scope for the 7-code Phase 2 list).
+
+### PRIVMSG / PART / QUIT
+- Not implemented yet — empty stubs (Phase 3 TODO). Sending them currently does nothing
+  visible on either window and logs nothing distinctive; not a crash, just a no-op.
 
 ## 6. Fragmentation test (subject IV.3 — the `ctrl+D` test)
 ```bash
@@ -264,9 +330,9 @@ single `command` line only when the line ending arrives. Works because each
 irssi
 /connect 127.0.0.1 6667 mypassword jin
 ```
-**Current limitation:** irssi will connect but hang at "waiting for server" —
-it requires the numeric `001` welcome (Phase 2 TODO). Re-test after numerics land;
-a working reference client is a hard subject requirement for evaluation.
+**Should now work** — `001 RPL_WELCOME` landed 2026-08-08. Not yet re-verified live
+against irssi (deferred to manual testing); a working reference client is a hard
+subject requirement for evaluation.
 
 ## 9. Leaks / cleanup
 ```bash
@@ -279,33 +345,8 @@ ps aux | grep ircserv | grep -v grep           # after tests: no leftover server
 # Defense checklist (from subject v10.0)
 - [ ] `README.md` at **repo root**: italic first line with logins, Description, Instructions, Resources (incl. how AI was used) — English
 - [ ] stop tracking the compiled binary `ircserv/ircserv` (it's in git; add to `.gitignore`, `git rm --cached`)
-- [ ] reference client = **irssi** (proposed): must connect with zero errors — blocked on Phase 2 numerics (`001`)
+- [ ] reference client = **irssi** (proposed): must connect with zero errors — `001` numeric landed 2026-08-08, not yet live-verified against irssi
 - [ ] only allowed external functions used (see subject p.6); `fcntl` **only** as `fcntl(fd, F_SETFL, O_NONBLOCK)`
 - [ ] exactly **one** `poll()` handles everything — read *and* write; no fork, no threads
 - [ ] server never crashes / never quits unexpectedly (crash = grade 0)
 - [ ] be ready for a small live code modification during evaluation
-
-
-
-## Bugs
-- when a client is usint NICK command, other clients can not communicat with the server.
-- seg fault in this situation:
-```
-% ./ircserv 6667 1234
-New client connected: 127.0.0.1
-With Port: 48666
-Received data from client 4: JOIN #general
-
-Processing line from client 4: JOIN #general
-Error: Client must be authenticated before joining a channel.
-Received data from client 4: NICK habib
-
-Processing line from client 4: NICK habib
-Received data from client 4: PASS 1234
-
-Processing line from client 4: PASS 1234
-Received data from client 4: JOIN #general
-
-Processing line from client 4: JOIN #general
-zsh: segmentation fault (core dumped)  ./ircserv 6667 1234
-```

@@ -70,20 +70,28 @@ void Server::handleNick(const Message &msg, int clientFd)
 		// pass (only the 7 codes on the Phase 2 checklist were implemented)
 		return;
 	}
-	// 3. Check nickname is not already used
+	// 3. No-op guard: re-setting to the SAME nickname isn't a real change —
+	// isNicknameInUse() excludes the client's own fd, so without this it would
+	// pass as "not in use" and fall through to a spurious broadcast below
+	if (msg.getParams()[0] == client->getNickname())
+	{
+		checkRegistrationComplete(clientFd);
+		return;
+	}
+	// 4. Check nickname is not already used
 	if (isNicknameInUse(msg.getParams()[0], clientFd))
 	{
 		std::cerr << "Error: Nickname already in use." << std::endl;
 		sendNumericReply(clientFd, ERR_NICKNAMEINUSE, replyTarget(client), msg.getParams()[0], "Nickname is already in use");
 		return;
 	}
-	// 4. Store nickname in Client object — capture the OLD nickname before
+	// 5. Store nickname in Client object — capture the OLD nickname before
 	// overwriting it (previously read after the write, so old==new always)
 	std::string oldNickname = client->getNickname();
 	std::string newNickname = msg.getParams()[0];
 	client->setNickname(newNickname);
 
-	// 5. Notify others only on a genuine change — a client's first NICK
+	// 6. Notify others only on a genuine change — a client's first NICK
 	// (during registration, oldNickname empty) has no previous identity to
 	// announce, so real IRC doesn't broadcast it
 	if (!oldNickname.empty())
