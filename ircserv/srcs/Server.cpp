@@ -1,6 +1,8 @@
 #include "../includes/Server.hpp"
 #include "../includes/signal.hpp"
 #include "../includes/Channel.hpp"
+#include <sstream>
+#include <iomanip>
 
 // constructor, destructor, copy constructor, assignment operator (Orthodox Canonical Form)
 //TODO: habib check Q. do we need _client?
@@ -280,8 +282,29 @@ bool Server::isValidChannelName(const std::string &channelName)
 
 void	Server::executeCommand(const Message& msg, int clientFd)
 {
+	CommandType type = getCommandType(msg.getCommand());
+	Client *client = getClient(clientFd);
 
-	switch (getCommandType(msg.getCommand()))
+	if (type == CMD_UNKNOWN)
+	{
+		sendNumericReply(clientFd, ERR_UNKNOWNCOMMAND, replyTarget(client), msg.getCommand(), "Unknown command");
+		return;
+	}
+
+	if (client && !client->isPasswordAuthenticated() && type != CMD_PASS)
+	{
+		sendNumericReply(clientFd, ERR_NOTREGISTERED, replyTarget(client), "", "You have not registered");
+		return;
+	}
+
+	//after PASS, only PASS/NICK/USER are allowed until registration completes
+	if (client && !client->isRegistered() && type != CMD_PASS && type != CMD_NICK && type != CMD_USER)
+	{
+		sendNumericReply(clientFd, ERR_NOTREGISTERED, replyTarget(client), "", "You have not registered");
+		return;
+	}
+
+	switch (type)
 	{
 	case CMD_PASS:
 		handlePass(msg, clientFd);
@@ -375,6 +398,29 @@ void Server::queueSend(int clientFd, const std::string &msg)
 		return;
 	client->appendToWriteBuf(msg);
 	setPollOut(clientFd, true);
+}
+
+// Formats and queues a numeric reply, e.g. ":ircserv 001 jin :Welcome...".
+// code is zero-padded to 3 digits (matters for 001). middleParam is an
+// optional extra token before the trailing " :message" (e.g. the attempted
+// nickname for 433, or the command name for 461/421) — pass "" to omit it.
+void Server::sendNumericReply(int clientFd, int code, const std::string &target, const std::string &middleParam, const std::string &trailing)
+{
+	std::ostringstream oss;
+	oss << ":" << SERVER_NAME << " " << std::setfill('0') << std::setw(3) << code << " " << target;
+	if (!middleParam.empty())
+		oss << " " << middleParam;
+	oss << " :" << trailing << "\r\n";
+	queueSend(clientFd, oss.str());
+}
+
+// Numeric replies target the client's current nickname once known, or "*"
+// before that — the standard IRC convention for pre-registration errors.
+std::string Server::replyTarget(Client *client)
+{
+	if (!client || client->getNickname().empty())
+		return "*";
+	return client->getNickname();
 }
 
 // D2: one send() per POLLOUT event, mirror of receiveData().

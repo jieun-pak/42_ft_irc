@@ -5,24 +5,31 @@
 
 void Server::handlePass(const Message &msg, int clientFd)
 {
+	Client *client = getClient(clientFd);
+	if (!client)
+		return;
+	// 0. Reject re-register
+	if (client->isRegistered())
+	{
+		sendNumericReply(clientFd, ERR_ALREADYREGISTRED, replyTarget(client), "", "You may not reregister");
+		return;
+	}
 	// 1. Check parameter count
 	if (msg.getParams().size() < 1)
 	{
 		std::cerr << "Error: PASS command requires a password parameter." << std::endl;
+		sendNumericReply(clientFd, ERR_NEEDMOREPARAMS, replyTarget(client), "PASS", "Not enough parameters");
 		return;
 	}
 	// 2. Verify password
 	if (msg.getParams()[0] != _password)
 	{
 		std::cerr << "Error: Incorrect password." << std::endl;
+		sendNumericReply(clientFd, ERR_PASSWDMISMATCH, replyTarget(client), "", "Password incorrect");
 		return;
 	}
 	// 3. Mark client as password-authenticated
-	Client *client = getClient(clientFd);
-	if (client)
-	{
-		client->setPasswordAuthenticated(true);
-	}
+	client->setPasswordAuthenticated(true);
 	checkRegistrationComplete(clientFd);
 }
 
@@ -38,36 +45,40 @@ void Server::checkRegistrationComplete(int clientFd)
 	if (client->isPasswordAuthenticated() && !client->getNickname().empty() && client->isUserReceived())
 	{
 		client->setRegistered(true);
-		std::string welcomeMessage = "Welcome to the IRC server, " + client->getNickname() + "!\r\n";
-		queueSend(clientFd, welcomeMessage);
+		sendNumericReply(clientFd, RPL_WELCOME, client->getNickname(), "",
+			"Welcome to the IRC server, " + client->getNickname() + "!");
 	}
 }
 
 void Server::handleNick(const Message &msg, int clientFd)
 {
+	Client *client = getClient(clientFd);
+	if (!client)
+		return;
 	// 1. Check nickname exists
 	if (msg.getParams().size() < 1)
 	{
 		std::cerr << "Error: NICK command requires a nickname parameter." << std::endl;
+		sendNumericReply(clientFd, ERR_NEEDMOREPARAMS, replyTarget(client), "NICK", "Not enough parameters");
 		return;
 	}
 	// 2. Check nickname format
 	if (!isValidNickname(msg.getParams()[0]))
 	{
 		std::cerr << "Error: Invalid nickname format." << std::endl;
+		// correct code here is 432 ERR_ERRONEUSNICKNAME — out of scope for this
+		// pass (only the 7 codes on the Phase 2 checklist were implemented)
 		return;
 	}
 	// 3. Check nickname is not already used
 	if (isNicknameInUse(msg.getParams()[0], clientFd))
 	{
 		std::cerr << "Error: Nickname already in use." << std::endl;
+		sendNumericReply(clientFd, ERR_NICKNAMEINUSE, replyTarget(client), msg.getParams()[0], "Nickname is already in use");
 		return;
 	}
 	// 4. Store nickname in Client object — capture the OLD nickname before
 	// overwriting it (previously read after the write, so old==new always)
-	Client *client = getClient(clientFd);
-	if (!client)
-		return;
 	std::string oldNickname = client->getNickname();
 	std::string newNickname = msg.getParams()[0];
 	client->setNickname(newNickname);
@@ -91,20 +102,27 @@ void Server::handleNick(const Message &msg, int clientFd)
 
 void Server::handleUser(const Message &msg, int clientFd)
 {
+	Client *client = getClient(clientFd);
+	if (!client)
+		return;
+	// 0. Reject if already registered (462) — was silently re-processed before,
+	// silently overwriting username/realname and re-sending the welcome
+	if (client->isRegistered())
+	{
+		sendNumericReply(clientFd, ERR_ALREADYREGISTRED, replyTarget(client), "", "You may not reregister");
+		return;
+	}
 	// 1. Validate parameters
 	if (msg.getParams().size() < 4)
 	{
 		std::cerr << "Error: USER command requires four parameters." << std::endl;
 		std::cout << "Usage: USER <username> <hostname> <servername> <realname>" << std::endl;
+		sendNumericReply(clientFd, ERR_NEEDMOREPARAMS, replyTarget(client), "USER", "Not enough parameters");
 		return;
 	}
 	// 2. Store username/realname
-	Client *client = getClient(clientFd);
-	if (client)
-	{
-		client->setUsername(msg.getParams()[0]);
-		client->setRealname(msg.getParams()[3]);
-	}
+	client->setUsername(msg.getParams()[0]);
+	client->setRealname(msg.getParams()[3]);
 	// 3. Mark USER as received (you can set a flag in the Client class if needed)
 	client->setUserReceived(true);
 
@@ -115,17 +133,9 @@ void Server::handleUser(const Message &msg, int clientFd)
 void Server::sendTopic(Channel *channel, Client *client)
 {
 	if (channel->getTopic().empty())
-    {
-        // 331 RPL_NOTOPIC
-		std::string notopicMessage = "331 " + client->getNickname() + " " + channel->getName() + " :No topic is set\r\n";
-		send(client->getFd(), notopicMessage.c_str(), notopicMessage.size(), 0);
-	}
+		sendNumericReply(client->getFd(), RPL_NOTOPIC, replyTarget(client), channel->getName(), "No topic is set");
 	else
-	{
-		// 332 RPL_TOPIC
-		std::string topicMessage = "332 " + client->getNickname() + " " + channel->getName() + " :" + channel->getTopic() + "\r\n";
-		send(client->getFd(), topicMessage.c_str(), topicMessage.size(), 0);
-    }
+		sendNumericReply(client->getFd(), RPL_TOPIC, replyTarget(client), channel->getName(), channel->getTopic());
 }
 
 void Server::sendNamesList(Channel *channel, Client *client)
@@ -137,44 +147,33 @@ void Server::sendNamesList(Channel *channel, Client *client)
 		namesList += (*it)->getNickname() + " ";
 	}
 
-    // 353 RPL_NAMREPLY
-	std::string namereplyMessage = "353 " + client->getNickname() + " = " + channel->getName() + " :" + namesList + "\r\n";
-	send(client->getFd(), namereplyMessage.c_str(), namereplyMessage.size(), 0);
-
-    // 366 RPL_ENDOFNAMES
-	std::string endofnamesMessage = "366 " + client->getNickname() + " " + channel->getName() + " :End of /NAMES list\r\n";
-	send(client->getFd(), endofnamesMessage.c_str(), endofnamesMessage.size(), 0);
+	sendNumericReply(client->getFd(), RPL_NAMREPLY, replyTarget(client), "= " + channel->getName(), namesList);
+	sendNumericReply(client->getFd(), RPL_ENDOFNAMES, replyTarget(client), channel->getName(), "End of /NAMES list");
 }
 
 void Server::handleJoin(const Message &msg, int clientFd)
 {
-	// 0. Validate parameters
-	if (msg.getParams().size() < 1)
-	{
-		std::cerr << "Error: JOIN command requires a channel parameter." << std::endl;
-		return;
-	}
 	Client *client = getClient(clientFd);
 	if (!client)
 	{
 		std::cerr << "Error: Client not found for fd: " << clientFd << std::endl;
 		return;
 	}
+	// 0. Validate parameters — registration itself is already guaranteed by
+	// executeCommand()'s gating (451), so no auth check needed here anymore
+	if (msg.getParams().size() < 1)
+	{
+		std::cerr << "Error: JOIN command requires a channel parameter." << std::endl;
+		sendNumericReply(clientFd, ERR_NEEDMOREPARAMS, replyTarget(client), "JOIN", "Not enough parameters");
+		return;
+	}
 	if (!isValidChannelName(msg.getParams()[0]))
 	{
-		// TODO: ERR_NEEDMOREPARAMS instead of just printing an error
+		// correct code here is 476 ERR_BADCHANMASK — out of scope for this pass
 		std::cerr << "Error: Invalid channel name format." << std::endl;
 		return;
 	}
-	// 1. Client must be fully registered (PASS+NICK+USER) before touching any
-	// channel state — checked BEFORE find-or-create so a rejected client can't
-	// leave a phantom empty channel behind in _channels
-	if (!client->isRegistered())
-	{
-		std::cerr << "Error: Client must be authenticated before joining a channel." << std::endl;
-		return;
-	}
-	// 2. Find or create channel
+	// 1. Find or create channel
 	std::string channelName = msg.getParams()[0];
 	std::map<std::string, Channel *>::iterator it = _channels.find(channelName);
 	Channel *channel = NULL;

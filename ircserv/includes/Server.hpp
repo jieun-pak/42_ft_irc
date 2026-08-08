@@ -12,6 +12,7 @@
 #include <sys/poll.h>
 #include <fcntl.h>
 #include "Client.hpp"
+#include "Replies.hpp"
 #include <arpa/inet.h>
 #include <cerrno>
 #include <cctype>
@@ -70,6 +71,11 @@ class Server
 		// always writable)
 		void	setPollOut(int fd, bool enable);
 		void	queueSend(int clientFd, const std::string &msg);
+
+		// numeric replies (RPL_*/ERR_*, see Replies.hpp): the one place that
+		// formats ":<server> <code> <target>[ <middleParam>] :<trailing>\r\n"
+		void	sendNumericReply(int clientFd, int code, const std::string &target, const std::string &middleParam, const std::string &trailing);
+		std::string	replyTarget(Client *client);
 
 		// command handlers
 		void	handlePass(const Message& msg, int clientFd);
