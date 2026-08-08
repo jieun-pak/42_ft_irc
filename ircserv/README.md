@@ -63,7 +63,7 @@ Team working doc for the `ircserv` implementation. Detailed Phase 1 design/decis
 
 ### Phase 3 — Channels + messaging (in progress)
 - [x] `Channel` class: name, members, topic, invite-only flag, password, user limit, banned-users list
-- [~] `JOIN`: creates channel if missing, adds member, sends `RPL_NOTOPIC`/`RPL_TOPIC` (331/332)
+- [x] `JOIN`: creates channel if missing, adds member, sends `RPL_NOTOPIC`/`RPL_TOPIC` (331/332)
       and `RPL_NAMREPLY`/`RPL_ENDOFNAMES` (353/366), broadcasts JOIN to channel —
       **has a crash bug and an auth-check bug, see Bugs section**
 - [ ] first joiner does NOT become operator — `Channel` has no operator/op list at all yet
@@ -71,10 +71,10 @@ Team working doc for the `ircserv` implementation. Detailed Phase 1 design/decis
 - [ ] `PRIVMSG`: still an empty stub — to a channel (broadcast to members) and to a nick (direct)
 - [ ] `PART`: still an empty stub — remove from channel, broadcast, destroy channel if now empty
 - [ ] `QUIT`: still an empty stub — remove from all joined channels, broadcast, close fd, clean up
-- [ ] `Channel::broadcastMessage()` and `sendTopic()`/`sendNamesList()` call `send()` directly,
+- [x] `Channel::broadcastMessage()` and `sendTopic()`/`sendNamesList()` call `send()` directly,
       bypassing `queueSend()`/`POLLOUT` — violates the same subject rule D2 fixed in Phase 1;
       needs converting (Channel has no access to `Server::queueSend`, needs a design decision)
-- [ ] `_channels` map entries (`new Channel(...)`) are never freed — the cleanup loop in
+- [x] `_channels` map entries (`new Channel(...)`) are never freed — the cleanup loop in
       `Server::~Server()` is still commented out; now an active leak, not just a placeholder
 
 ### Phase 4 — Operator commands (drafted, not functional)

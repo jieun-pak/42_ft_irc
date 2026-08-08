@@ -79,6 +79,14 @@ bool Channel::isBanned(const std::string &user) const
 	return false;
 }
 
+bool Channel::isOperator(Client *client) const
+{
+	// For simplicity, let's assume the first member is the operator
+	if (!_members.empty() && _members[0] == client)
+		return true;
+	return false;
+}
+
 // setters
 void Channel::addMember(Client *client)
 {
@@ -132,6 +140,13 @@ void Channel::removeBannedUser(const std::string &user)
 			break;
 		}
 	}
+}
+
+
+void Channel::setRestrictedTopic(bool restricted)
+{
+	// This function can be used to set a flag for restricted topic changes
+	isRestrictedTopic = restricted;
 }
 
 // Broadcast a message to all members of the channel except the sender

@@ -16,6 +16,7 @@ class Channel
 		std::string _password;
 		size_t _userLimit;
 		std::vector<std::string> _bannedUsers;
+		bool isRestrictedTopic;
 
 		Channel();
 		Channel(const Channel &other);
@@ -37,6 +38,7 @@ class Channel
 		bool isUserLimitReached() const;
 		bool isMember(Client *client) const;
 		bool isBanned(const std::string &user) const;
+		bool isOperator(Client *client) const;
 
 		// setters
 		void addMember(Client *client);
@@ -47,6 +49,7 @@ class Channel
 		void setUserLimit(size_t userLimit);
 		void addBannedUser(const std::string &user);
 		void removeBannedUser(const std::string &user);
+		void setRestrictedTopic(bool restricted);
 
 
 		void broadcastMessage(const std::string &message, Client *sender);

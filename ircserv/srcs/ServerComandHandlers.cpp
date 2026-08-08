@@ -138,7 +138,7 @@ void Server::handleUser(const Message &msg, int clientFd)
 }
 
 // JOIN command halpers
-void Server::sendTopic(Channel *channel, Client *client)
+void Server::sendTopic(Channel* channel, Client* client)
 {
 	if (channel->getTopic().empty())
 		sendNumericReply(client->getFd(), RPL_NOTOPIC, replyTarget(client), channel->getName(), "No topic is set");
@@ -146,14 +146,9 @@ void Server::sendTopic(Channel *channel, Client *client)
 		sendNumericReply(client->getFd(), RPL_TOPIC, replyTarget(client), channel->getName(), channel->getTopic());
 }
 
-void Server::sendNamesList(Channel *channel, Client *client)
+void Server::sendNamesList(Channel* channel, Client* client)
 {
-	// Build a list of nicknames in the channel
-	std::string namesList;
-	for (std::vector<Client *>::const_iterator it = channel->getMembers().begin(); it != channel->getMembers().end(); ++it)
-	{
-		namesList += (*it)->getNickname() + " ";
-	}
+    std::string namesList;
 
 	sendNumericReply(client->getFd(), RPL_NAMREPLY, replyTarget(client), "= " + channel->getName(), namesList);
 	sendNumericReply(client->getFd(), RPL_ENDOFNAMES, replyTarget(client), channel->getName(), "End of /NAMES list");
@@ -244,89 +239,159 @@ void Server::handleJoin(const Message &msg, int clientFd)
 
 void Server::handleMode(const Message &msg, int clientFd)
 {
-	(void)msg;
-	(void)clientFd;
-	// 1. Validate parameters
-	if (msg.getParams().size() < 2)
-	{
-		std::cerr << "Error: MODE command requires at least two parameters." << std::endl;
-		return;
-	}
-	// 2. Check channel exists
-	if (!isChannelExists(msg.getParams()[0]))
-	{
-		std::cerr << "Error: Channel " << msg.getParams()[0] << " does not exist." << std::endl;
-		return;
-	}
-	// 3. Check client is in channel
-	if (!isClientInChannel(getClient(clientFd), msg.getParams()[0]))
-	{
-		std::cerr << "Error: Client is not in channel " << msg.getParams()[0] << std::endl;
-		return;
-	}
-	// 4. Apply mode changes
-	switch (msg.getParams()[1][0])
-	{
-	case '+':
-		switch (msg.getParams()[1][1])
-		{
-		case 'i':
-			// Handle +i (invite-only)
-			_channels[msg.getParams()[0]]->setInviteOnly(true);
-			break;
-		case 'k':
-			// Handle +k (password protected)
-			_channels[msg.getParams()[0]]->setPassword(msg.getParams()[2]);
-			break;
-		case 'l':
-			// Handle +l (user limit)
-			_channels[msg.getParams()[0]]->setUserLimit(std::atoi(msg.getParams()[2].c_str()));
-			break;
-		case 'b':
-			// Handle +b (banned users)
-			_channels[msg.getParams()[0]]->addBannedUser(msg.getParams()[2]);
-			break;
-		default:
-			std::cerr << "Error: Invalid mode change format." << std::endl;
-			return;
-		}
-		break;
-	case '-':
-		switch (msg.getParams()[1][1])
-		{
-		case 'i':
-			// Handle -i (remove invite-only)
-			_channels[msg.getParams()[0]]->setInviteOnly(false);
-			break;
-		case 'k':
-			// Handle -k (remove password protection)
-			_channels[msg.getParams()[0]]->setPassword("");
-			break;
-		case 'l':
-			// Handle -l (remove user limit)
-			_channels[msg.getParams()[0]]->setUserLimit(0);
-			break;
-		case 'b':
-			// Handle -b (remove banned users)
-			_channels[msg.getParams()[0]]->removeBannedUser(msg.getParams()[2]);
-			break;
-		default:
-			std::cerr << "Error: Invalid mode change format." << std::endl;
-			return;
-		}
-		break;
-	default:
-		std::cerr << "Error: Invalid mode change format." << std::endl;
-		return;
-	}
+    // 1. Validate basic parameters
+    if (msg.getParams().size() < 2)
+    {
+        std::cerr << "Error: MODE command requires at least two parameters."
+                  << std::endl;
+        return;
+    }
+	// if we have 3 parameters, the third one is used for +k and +l modes
 
-	// 5. Broadcast MODE message
-	std::string modeMessage = ":" + getClient(clientFd)->getNickname() + " MODE " + msg.getParams()[0] + " " + msg.getParams()[1];
-	if (msg.getParams().size() > 2)
-		modeMessage += " " + msg.getParams()[2];
-	modeMessage += "\r\n";
-	_channels[msg.getParams()[0]]->broadcastMessage(modeMessage, getClient(clientFd));
+    Client *client = getClient(clientFd);
+    if (!client)
+        return;
+
+    // 2. Check channel exists
+    if (!isChannelExists(msg.getParams()[0]))
+    {
+        std::cerr << "Error: Channel " << msg.getParams()[0]
+                  << " does not exist." << std::endl;
+        return;
+    }
+
+    Channel *channel = _channels[msg.getParams()[0]];
+
+    // 3. Check client is in channel
+    if (!isClientInChannel(client, channel->getName()))
+    {
+        std::cerr << "Error: Client is not in channel "
+                  << channel->getName() << std::endl;
+        return;
+    }
+
+    // 4. Validate mode string
+    const std::string &mode = msg.getParams()[1];
+
+    if (mode.size() < 2 || (mode[0] != '+' && mode[0] != '-'))
+    {
+        std::cerr << "Error: Invalid mode change format." << std::endl;
+        return;
+    }
+
+    char action = mode[0];
+    char modeChar = mode[1];
+
+    // 5. Check operator privileges
+    if (!channel->isOperator(client))
+    {
+        std::cerr << "Error: Client is not a channel operator."
+                  << std::endl;
+        return;
+    }
+
+    // 6. Apply mode change
+    switch (modeChar)
+    {
+        case 'i':
+            channel->setInviteOnly(action == '+');
+            break;
+
+        case 't':
+            channel->setRestrictedTopic(action == '+');
+            break;
+
+        case 'k':
+            if (action == '+')
+            {
+                if (msg.getParams().size() < 3)
+                {
+                    std::cerr << "Error: +k requires a password."
+                              << std::endl;
+                    return;
+                }
+
+                channel->setPassword(msg.getParams()[2]);
+            }
+            else
+            {
+                channel->setPassword("");
+            }
+            break;
+
+        case 'l':
+            if (action == '+')
+            {
+                if (msg.getParams().size() < 3)
+                {
+                    std::cerr << "Error: +l requires a user limit."
+                              << std::endl;
+                    return;
+                }
+
+                int limit = std::atoi(msg.getParams()[2].c_str());
+
+                if (limit <= 0)
+                {
+                    std::cerr << "Error: Invalid user limit."
+                              << std::endl;
+                    return;
+                }
+
+                channel->setUserLimit(limit);
+            }
+            else
+            {
+                channel->setUserLimit(0);
+            }
+            break;
+
+        case 'o':
+            if (msg.getParams().size() < 3)
+            {
+                std::cerr << "Error: +o/-o requires a nickname."
+                          << std::endl;
+                return;
+            }
+
+            {
+                Client *target = getClientByNickname(msg.getParams()[2]);
+
+                if (!target)
+                {
+                    std::cerr << "Error: Client "
+                              << msg.getParams()[2]
+                              << " does not exist." << std::endl;
+                    return;
+                }
+
+                if (action == '+')
+                    channel->addOperator(target);
+                else
+                    channel->removeOperator(target);
+            }
+            break;
+
+        default:
+            std::cerr << "Error: Unsupported channel mode."
+                      << std::endl;
+            return;
+    }
+
+    // 7. Broadcast MODE message
+    std::string modeMessage =
+        ":" + client->getNickname()
+        + " MODE " + channel->getName()
+        + " " + mode;
+
+    if (msg.getParams().size() > 2)
+        modeMessage += " " + msg.getParams()[2];
+
+    modeMessage += "\r\n";
+
+    channel->broadcastMessage(modeMessage, client);
 }
+
 
 void Server::handlePart(const Message &msg, int clientFd)
 {
