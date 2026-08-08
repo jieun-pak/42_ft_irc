@@ -89,19 +89,22 @@ bool Channel::isOperator(Client *client) const
 }
 
 // setters
+// Internal safety nets only — Channel has no Server* to call sendNumericReply()
+// through, so the real client-facing 443/471 replies are sent by
+// Server::handleJoin (which does have that access) before addMember() is ever
+// reached. These std::cerr checks just guard against a future caller that
+// forgets to pre-check.
 void Channel::addMember(Client *client)
 {
 	//check if the client is already a member
 	if (isMember(client)){
 		std::cerr << "Error: Client is already a member of channel " << _name << std::endl;
-		//sendNumericReply(client->getFd(), ERR_ALREADYREGISTERED, client->getNickname(), _name, "You are already a member of this channel");
 		return;
 	}
 
 	//check if the channel is full
 	if (isUserLimitReached()){
 		std::cerr << "Error: Channel " << _name << " is full." << std::endl;
-		//sendNumericReply(client->getFd(), ERR_CHANNELISFULL, client->getNickname(), _name, "Channel is full");
 		return;
 	}
 

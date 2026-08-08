@@ -195,9 +195,16 @@ void Server::handleJoin(const Message &msg, int clientFd)
 	}
 
 	// 3. Check channel restrictions
+	if (channel->isMember(client))
+	{
+		std::cerr << "Error: Client is already a member of channel " << channelName << std::endl;
+		sendNumericReply(clientFd, ERR_USERONCHANNEL, replyTarget(client), client->getNickname() + " " + channelName, "is already on channel");
+		return;
+	}
 	if (channel->isInviteOnly())
 	{
 		std::cerr << "Error: Channel " << channelName << " is invite-only." << std::endl;
+		sendNumericReply(clientFd, ERR_INVITEONLYCHAN, replyTarget(client), channelName, "Cannot join channel (+i)");
 		return;
 	}
 	if (channel->isPasswordProtected())
@@ -205,17 +212,20 @@ void Server::handleJoin(const Message &msg, int clientFd)
 		if (msg.getParams().size() < 2 || msg.getParams()[1] != channel->getPassword())
 		{
 			std::cerr << "Error: Incorrect or missing password for channel " << channelName << std::endl;
+			sendNumericReply(clientFd, ERR_BADCHANNELKEY, replyTarget(client), channelName, "Cannot join channel (+k)");
 			return;
 		}
 	}
 	if (channel->isUserLimitReached())
 	{
 		std::cerr << "Error: Channel " << channelName << " has reached its user limit." << std::endl;
+		sendNumericReply(clientFd, ERR_CHANNELISFULL, replyTarget(client), channelName, "Cannot join channel (+l)");
 		return;
 	}
 	if (channel->isBanned(client->getNickname()))
 	{
 		std::cerr << "Error: Client " << client->getNickname() << " is banned from channel " << channelName << std::endl;
+		sendNumericReply(clientFd, ERR_BANNEDFROMCHAN, replyTarget(client), channelName, "Cannot join channel (+b)");
 		return;
 	}
 	// 3. Add client to channel
@@ -359,13 +369,12 @@ void Server::handleMode(const Message &msg, int clientFd)
 
                 if (limit <= 0)
                 {
-                    sendNumericReply(
-                        clientFd,
-                        ERR_INVALIDMODEPARAM,
-                        replyTarget(client),
-                        channelName,
-                        "Invalid user limit"
-                    );
+                    // RFC 1459/2812 has no numeric for "MODE param present but
+                    // invalid" — closest real code, ERR_UNKNOWNMODE (472), is
+                    // for an unrecognized mode *character*, not a bad value for
+                    // a recognized one, so it would be misleading here. Server
+                    // log only.
+                    std::cerr << "Error: Invalid user limit for +l on " << channelName << std::endl;
                     return;
                 }
 
