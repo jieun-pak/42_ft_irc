@@ -1,7 +1,6 @@
 #include "../includes/Channel.hpp"
 #include "../includes/Client.hpp"
 #include "../includes/Replies.hpp"
-#include <sys/socket.h> // For send()
 #include <iostream>    // For std::cerr
 const size_t Channel::MAX_MEMBERS = 10;
 
@@ -82,9 +81,11 @@ bool Channel::isBanned(const std::string &user) const
 
 bool Channel::isOperator(Client *client) const
 {
-	// For simplicity, let's assume the first member is the operator
-	if (!_members.empty() && _members[0] == client)
-		return true;
+	for (std::vector<Client *>::const_iterator it = _operators.begin(); it != _operators.end(); ++it)
+	{
+		if (*it == client)
+			return true;
+	}
 	return false;
 }
 
@@ -167,19 +168,6 @@ void Channel::setRestrictedTopic(bool restricted)
 {
 	// This function can be used to set a flag for restricted topic changes
 	isRestrictedTopic = restricted;
-}
-
-// Broadcast a message to all members of the channel except the sender
-void Channel::broadcastMessage(const std::string &message, Client *sender)
-{
-	for (std::vector<Client *>::iterator it = _members.begin(); it != _members.end(); ++it)
-	{
-		if (*it != sender) // Don't send the message back to the sender
-		{
-			int fd = (*it)->getFd();
-			send(fd, message.c_str(), message.length(), 0);
-		}
-	}
 }
 
 void Channel::addOperator(Client *client)
