@@ -20,7 +20,7 @@ Channel &Channel::operator=(const Channel &other)
 }
 
 // Public constructor
-Channel::Channel(const std::string &name) : _name(name) {}
+Channel::Channel(const std::string &name) : _name(name), _inviteOnly(false), _userLimit(0), isRestrictedTopic(false) {}
 Channel::~Channel() {}
 
 // Getters
