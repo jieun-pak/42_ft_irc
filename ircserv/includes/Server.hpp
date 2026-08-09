@@ -53,7 +53,8 @@ class Server
 			CMD_MODE,
     	    CMD_PART,
     	    CMD_PRIVMSG,
-    	    CMD_QUIT
+    	    CMD_QUIT,
+    	    CMD_TOPIC
     	};
 
     	CommandType getCommandType(const std::string& command);
@@ -93,6 +94,7 @@ class Server
 		void	handlePart(const Message& msg, int clientFd);
 		void	handlePrivmsg(const Message& msg, int clientFd);
 		void	handleQuit(const Message& msg, int clientFd);
+		void	handleTopic(const Message& msg, int clientFd);
 
 		// JOIN command helpers
 		void	sendTopic(Channel* channel, Client* client);

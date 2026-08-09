@@ -89,6 +89,11 @@ bool Channel::isOperator(Client *client) const
 	return false;
 }
 
+bool Channel::isTopicRestricted() const
+{
+	return isRestrictedTopic;
+}
+
 // setters
 // Channel has no Server* to call sendNumericReply() through, so the real
 // client-facing 443/471 replies are sent by Server::handleJoin (which does

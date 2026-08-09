@@ -461,6 +461,60 @@ void Server::handleMode(const Message &msg, int clientFd)
     broadcastToChannel(channel, modeMessage, client);
 }
 
+void Server::handleTopic(const Message &msg, int clientFd)
+{
+	Client *client = getClient(clientFd);
+	if (!client)
+		return;
+
+	// 1. Validate parameters
+	if (msg.getParams().size() < 1)
+	{
+		sendNumericReply(clientFd, ERR_NEEDMOREPARAMS, replyTarget(client), "TOPIC", "Not enough parameters");
+		return;
+	}
+
+	const std::string &channelName = msg.getParams()[0];
+
+	// 2. Check channel exists
+	if (!isChannelExists(channelName))
+	{
+		sendNumericReply(clientFd, ERR_NOSUCHCHANNEL, replyTarget(client), channelName, "No such channel");
+		return;
+	}
+
+	Channel *channel = _channels[channelName];
+
+	// 3. Check client is in channel
+	if (!channel->isMember(client))
+	{
+		sendNumericReply(clientFd, ERR_NOTONCHANNEL, replyTarget(client), channelName, "You're not on that channel");
+		return;
+	}
+
+	// 4. No topic param: query mode — report the current topic
+	if (msg.getParams().size() < 2)
+	{
+		sendTopic(channel, client);
+		return;
+	}
+
+	// 5. Set mode: +t restricts topic changes to channel operators
+	if (channel->isTopicRestricted() && !channel->isOperator(client))
+	{
+		sendNumericReply(clientFd, ERR_CHANOPRIVSNEEDED, replyTarget(client), channelName, "You're not channel operator");
+		return;
+	}
+
+	// 6. Apply and broadcast (including back to the setter, per RFC)
+	const std::string &newTopic = msg.getParams()[1];
+	channel->setTopic(newTopic);
+
+	std::string topicMsg = ":" + client->getNickname() + " TOPIC " + channelName + " :" + newTopic + "\r\n";
+	queueSend(clientFd, topicMsg);
+	broadcastToChannel(channel, topicMsg, client);
+}
+
 void Server::handlePart(const Message &msg, int clientFd)
 {
 	(void)msg;

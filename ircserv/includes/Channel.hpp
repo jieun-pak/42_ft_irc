@@ -41,6 +41,7 @@ class Channel
 		bool isMember(Client *client) const;
 		bool isBanned(const std::string &user) const;
 		bool isOperator(Client *client) const;
+		bool isTopicRestricted() const;
 
 		// setters
 		bool addMember(Client *client);
