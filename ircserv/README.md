@@ -11,9 +11,7 @@ Team working doc for the `ircserv` implementation. Detailed Phase 1 design/decis
 - [x] Phase 1 — Skeleton + server loop (socket → poll() → accept)
 - [x] Phase 2 — Registration (PASS / NICK / USER → 001 RPL_WELCOME)
 - [~] Phase 3 — Channels + messaging (JOIN / PRIVMSG / PART / QUIT) — JOIN implemented and working; PRIVMSG/PART/QUIT still empty
-- [~] Phase 4 — Operator commands (KICK / INVITE / TOPIC / MODE i,t,k,o,l) — MODE implemented and wired in, but `isOperator()` has a real bug (see Phase 4 TODOs); KICK/INVITE/TOPIC not started
-
-> Build is currently BROKEN: `std::stoi` (C++11) used in `ServerComandHandlers.cpp:256` — does not compile under `-std=c++98`. See Bugs section below.
+- [~] Phase 4 — Operator commands (KICK / INVITE / TOPIC / MODE i,t,k,o,l) — MODE and TOPIC implemented and wired in; KICK/INVITE not started
 
 > `[x]` done · `[~]` in progress · `[ ]` not started
 
@@ -109,8 +107,16 @@ Team working doc for the `ircserv` implementation. Detailed Phase 1 design/decis
       `+o`/`-o` actually take effect for whoever they're applied to.
 - [ ] `KICK #channel nick [:reason]` — not started
 - [ ] `INVITE nick #channel` — not started
-- [ ] `TOPIC #channel [:newtopic]` as its own command — not started (JOIN currently only
-      *shows* the topic on join; there's no way to *view or change* it afterward)
+- [x] `TOPIC #channel [:newtopic]` — **2026-08-09**, `CMD_TOPIC` added to the enum,
+      `getCommandType()`, and `executeCommand()`; `handleTopic()` (`ServerComandHandlers.cpp`)
+      handles both query (no second param → reuses `sendTopic()`, same 331/332 as JOIN) and
+      set (checks `Channel::isTopicRestricted()` — new getter, the flag was previously
+      write-only via `setRestrictedTopic()` with no way to read it back — against
+      `isOperator()` when `+t` is set, `482 ERR_CHANOPRIVSNEEDED` if not). On a successful
+      set, confirmation is sent to **both** the setter (`queueSend`) and the rest of the
+      channel (`broadcastToChannel`) — unlike `handleMode`, which only calls
+      `broadcastToChannel` and so never echoes the MODE change back to whoever issued it.
+      Worth aligning later if that self-echo gap in `handleMode` turns out to matter for irssi.
 
 ## Bugs / things to handle (found in manual testing, 2026-07-19)
 - [x] `handleNick`: old==new nick in broadcast — **fixed 2026-08-08**. `oldNickname`
@@ -181,7 +187,9 @@ Team working doc for the `ircserv` implementation. Detailed Phase 1 design/decis
 | Unknown command | [x] `421 ERR_UNKNOWNCOMMAND` |
 | Commands before `PASS` succeeds, or before registration completes | [x] `451 ERR_NOTREGISTERED` (`PASS` is the gatekeeper — see Phase 2) |
 | Real IRC client (irssi) full registration | [~] `001` now sent — not yet live-verified against irssi |
-| `JOIN` | [~] works, sends `331`/`332`/`353`/`366` + broadcasts `JOIN` to the channel — no operator concept yet |
+| `JOIN` | [x] works, sends `331`/`332`/`353`/`366` + broadcasts `JOIN` to the channel; first joiner becomes operator |
+| `MODE` (`i`,`t`,`k`,`l`,`o`) | [x] works, operator-gated, broadcasts to channel (sender not self-echoed) |
+| `TOPIC` | [x] works — query always allowed; set is operator-gated when `+t`; self-echoed to setter + broadcast to channel |
 | `PRIVMSG` / `PART` / `QUIT` | [ ] empty stubs |
 
 ## 1. Build checks
@@ -329,6 +337,59 @@ Server started as `./ircserv 6667 mypassword` in Window 1 throughout.
 - **Edge — invalid channel name (no `#` prefix):** `JOIN general` → currently **silent**,
   only logged on the server (`Error: Invalid channel name format.`) — no `476` reply to the
   client yet (documented gap, out of scope for the 7-code Phase 2 list).
+
+### MODE
+Setup for every case below: Window 2 (`jin`) creates `#general` via `JOIN` (becomes operator),
+then Window 3 (`ha`) also `JOIN`s (regular member).
+- **Happy — set `+t`:** Window 2 (operator) sends `MODE #general +t` → Window 3 sees
+  `:jin MODE #general +t`. Window 2 itself gets **no reply** — `handleMode` only calls
+  `broadcastToChannel()`, which excludes the sender (asymmetric with `TOPIC` below, which
+  does echo back to the setter — see Phase 4 TODOs).
+- **Happy — unset `-t`:** Window 2 sends `MODE #general -t` → Window 3 sees `:jin MODE #general -t`.
+- **Unhappy — non-operator tries any MODE:** Window 3 (not operator) sends `MODE #general +t` →
+  Window 3: `:ircserv 482 ha #general :You're not channel operator`.
+- **Unhappy — missing mode param:** Window 2 sends `MODE #general` alone → Window 2:
+  `:ircserv 461 jin MODE :Not enough parameters`.
+- **Unhappy — malformed mode string (no leading `+`/`-`):** `MODE #general t` → Window 2:
+  `:ircserv 501 jin :Unknown mode flag`.
+- **Unhappy — unrecognized mode char:** `MODE #general +z` → Window 2:
+  `:ircserv 472 jin z :is unknown mode char to me`.
+- **Unhappy — channel doesn't exist:** `MODE #nope +t` → Window 2:
+  `:ircserv 403 jin #nope :No such channel`.
+- **Edge — issued by a client not in the channel (Scenario B, Window 4 = client 3):** a
+  registered-but-not-joined client sends `MODE #general +t` →
+  `:ircserv 442 <nick> #general :You're not on that channel` — checked *before* the operator
+  check, so a non-member gets `442`, not `482`.
+- **Edge — setting a mode that's already set (`+t` twice in a row):** no error, just re-applies
+  and re-broadcasts; must not crash or double-insert into any internal list.
+- **`+o`/`-o` (grant/revoke operator):** Window 2 sends `MODE #general +o ha` → `ha` is now
+  operator and can itself run operator-gated commands; `-o` reverses it. Missing nick param →
+  `461`; unknown nick → `401 ERR_NOSUCHNICK`; nick not in the channel → `441 ERR_USERNOTINCHANNEL`.
+
+### TOPIC
+Same setup as MODE above (Window 2 = operator, Window 3 = member).
+- **Happy — query, no topic set yet:** Window 2 sends `TOPIC #general` → Window 2:
+  `:ircserv 331 jin #general :No topic is set`.
+- **Happy — set (as operator, `+t` off by default):** Window 2 sends
+  `TOPIC #general :Hello World` → **both** Window 2 and Window 3 see
+  `:jin TOPIC #general :Hello World` — unlike `MODE`, the setter is echoed too.
+- **Happy — query after it's set:** Window 3 sends `TOPIC #general` → Window 3:
+  `:ircserv 332 ha #general :Hello World`.
+- **Happy — clear the topic:** `TOPIC #general :` (colon, empty trailing) → sets it to `""`;
+  a later `TOPIC #general` query goes back to `331`, not `332`.
+- **Unhappy — `+t` set, non-operator tries to change it:** Window 2 sends `MODE #general +t`,
+  then Window 3 (non-op) sends `TOPIC #general :ha's topic` → Window 3:
+  `:ircserv 482 ha #general :You're not channel operator`.
+- **Happy — `+t` set, query still works for anyone:** with `+t` still on, Window 3 sends
+  `TOPIC #general` (no new topic) → succeeds normally (`331`/`332`) — the restriction only
+  applies to *setting*, checked after the query branch, never before it.
+- **Happy — `+t` set, operator can still change it:** Window 2 (operator) sends
+  `TOPIC #general :still allowed` → succeeds.
+- **Unhappy — missing channel param:** `TOPIC` alone → `:ircserv 461 jin TOPIC :Not enough parameters`.
+- **Unhappy — channel doesn't exist:** `TOPIC #nope` → `:ircserv 403 jin #nope :No such channel`.
+- **Unhappy — not a member of the channel:** a client who hasn't `JOIN`ed sends `TOPIC #general`
+  (query **or** set) → `:ircserv 442 <nick> #general :You're not on that channel` — checked
+  before the query/set branch, so even a *query* from a non-member is rejected.
 
 ### PRIVMSG / PART / QUIT
 - Not implemented yet — empty stubs (Phase 3 TODO). Sending them currently does nothing
