@@ -86,8 +86,28 @@ bool Server::isClientInChannel(Client *client, const std::string &channelName)
 // D5: close + free the client now, but defer the _pfds erase until after
 // eventLoop's scan finishes — erasing mid-iteration shifts entries and
 // skips events. eventLoop flushes _fdsToRemove at the end of each round.
+//
+// Must strip the client from every Channel's _members/_operators before
+// deleteClient() frees it — otherwise those vectors keep a dangling
+// Client*, and a later broadcastToChannel()/isOperator() on that channel
+// either reads freed memory or (if the fd/address gets reused by a new
+// connection) misidentifies an unrelated client as a member/operator.
 void Server::disconnectClient(int fd)
 {
+	Client *client = getClient(fd);
+	if (client)
+	{
+		const std::vector<std::string> &joined = client->getJoinedChannels();
+		for (std::vector<std::string>::const_iterator it = joined.begin(); it != joined.end(); ++it)
+		{
+			std::map<std::string, Channel *>::iterator chIt = _channels.find(*it);
+			if (chIt != _channels.end())
+			{
+				chIt->second->removeOperator(client);
+				chIt->second->removeMember(client);
+			}
+		}
+	}
 	close(fd);
 	deleteClient(fd);
 	_fdsToRemove.push_back(fd);

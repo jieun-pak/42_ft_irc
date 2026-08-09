@@ -69,6 +69,7 @@ class Client
 		void						setRegistered(bool registered);
 
 		void						joinChannel(const std::string &channelName);
+		const std::vector<std::string>	&getJoinedChannels() const;
 };
 
 #endif

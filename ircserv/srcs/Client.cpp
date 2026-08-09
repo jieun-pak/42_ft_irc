@@ -138,3 +138,8 @@ void Client::joinChannel(const std::string &channelName)
 {
 	_joinedChannels.push_back(channelName);
 }
+
+const std::vector<std::string> &Client::getJoinedChannels() const
+{
+	return _joinedChannels;
+}
