@@ -8,7 +8,8 @@ NAME	= ircserv
 # sources
 SRCS	=	srcs/main.cpp \
 			srcs/Server.cpp \
-			srcs/ServerComandHandlers.cpp \
+			srcs/handlers/ServerComandHandlers.cpp \
+			sercs/handlers/joinHandler.cpp \
 			srcs/Client.cpp \
 			srcs/signal.cpp \
  			srcs/Channel.cpp \

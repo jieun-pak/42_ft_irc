@@ -83,7 +83,7 @@ Team working doc for the `ircserv` implementation. Detailed Phase 1 design/decis
 - [x] `_channels` map entries (`new Channel(...)`) are never freed — **already fixed** (found
       already-implemented 2026-08-08, doc was stale): `Server::~Server()`'s cleanup loop is
       live, not commented out — deletes every `Channel*` and clears the map.
-- [ ] **`Channel::MAX_MEMBERS` (hard cap of 10) doesn't seem to be checked anywhere
+- [x] **`Channel::MAX_MEMBERS` (hard cap of 10) doesn't seem to be checked anywhere
       reachable — found 2026-08-08.** `handleJoin` only checks `isUserLimitReached()`,
       which is the `_userLimit`/`MODE +l` value (defaults to unlimited, 0), not
       `MAX_MEMBERS`; `Channel::addMember`'s own guard uses that same `_userLimit`-based

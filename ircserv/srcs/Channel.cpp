@@ -1,7 +1,7 @@
 #include "../includes/Channel.hpp"
 #include "../includes/Client.hpp"
 #include "../includes/Replies.hpp"
-#include <iostream>    // For std::cerr
+#include <iostream> // For std::cerr
 const size_t Channel::MAX_MEMBERS = 10;
 
 // Private constructor to prevent default construction
@@ -101,22 +101,25 @@ bool Channel::isTopicRestricted() const
 // are the authoritative ones, though; handleJoin's pre-checks exist only to
 // pick the right numeric to send, not to duplicate this method's logic. The
 // bool return means a caller can never mistake a silent no-op for success.
+
 bool Channel::addMember(Client *client)
 {
-	if (isMember(client))
-	{
-		std::cerr << "Error: Client is already a member of channel " << _name << std::endl;
-		return false;
-	}
+    if (!client)
+        return false;
 
-	if (isUserLimitReached())
-	{
-		std::cerr << "Error: Channel " << _name << " is full." << std::endl;
-		return false;
-	}
+    if (isMember(client))
+        return false;
 
-	_members.push_back(client);
-	return true;
+    // Hard channel capacity
+    if (_members.size() >= MAX_MEMBERS)
+        return false;
+
+    // MODE +l limit
+    if (isUserLimitReached())
+        return false;
+
+    _members.push_back(client);
+    return true;
 }
 
 void Channel::removeMember(Client *client)
@@ -167,7 +170,6 @@ void Channel::removeBannedUser(const std::string &user)
 		}
 	}
 }
-
 
 void Channel::setRestrictedTopic(bool restricted)
 {

@@ -1,5 +1,5 @@
-#include "../includes/Server.hpp"
-#include "../includes/Channel.hpp"
+#include "../../includes/Server.hpp"
+#include "../../includes/Channel.hpp"
 #include <algorithm>
 #include <cstdlib> // For std::atoi
 
@@ -137,110 +137,11 @@ void Server::handleUser(const Message &msg, int clientFd)
 	checkRegistrationComplete(clientFd);
 }
 
-// JOIN command halpers
-void Server::sendTopic(Channel* channel, Client* client)
-{
-	if (channel->getTopic().empty())
-		sendNumericReply(client->getFd(), RPL_NOTOPIC, replyTarget(client), channel->getName(), "No topic is set");
-	else
-		sendNumericReply(client->getFd(), RPL_TOPIC, replyTarget(client), channel->getName(), channel->getTopic());
-}
 
-void Server::sendNamesList(Channel* channel, Client* client)
-{
-    std::string namesList;
+/*
+	I moved JOIN handling to its own file.
+*/
 
-	sendNumericReply(client->getFd(), RPL_NAMREPLY, replyTarget(client), "= " + channel->getName(), namesList);
-	sendNumericReply(client->getFd(), RPL_ENDOFNAMES, replyTarget(client), channel->getName(), "End of /NAMES list");
-}
-
-void Server::handleJoin(const Message &msg, int clientFd)
-{
-	Client *client = getClient(clientFd);
-	if (!client)
-	{
-		std::cerr << "Error: Client not found for fd: " << clientFd << std::endl;
-		return;
-	}
-	// 0. Validate parameters — registration itself is already guaranteed by
-	// executeCommand()'s gating (451), so no auth check needed here anymore
-	if (msg.getParams().size() < 1)
-	{
-		std::cerr << "Error: JOIN command requires a channel parameter." << std::endl;
-		sendNumericReply(clientFd, ERR_NEEDMOREPARAMS, replyTarget(client), "JOIN", "Not enough parameters");
-		return;
-	}
-	if (!isValidChannelName(msg.getParams()[0]))
-	{
-		// correct code here is 476 ERR_BADCHANMASK — out of scope for this pass
-		std::cerr << "Error: Invalid channel name format." << std::endl;
-		return;
-	}
-	// 1. Find or create channel
-	std::string channelName = msg.getParams()[0];
-	std::map<std::string, Channel *>::iterator it = _channels.find(channelName);
-	Channel *channel = NULL;
-	if (it == _channels.end())
-	{
-		// Channel does not exist, create it
-		channel = new Channel(channelName);
-		_channels[channelName] = channel;
-		// add the joining client as the first operator
-		channel->addOperator(client);
-
-	}
-	else
-	{
-		channel = it->second;
-	}
-
-	// 3. Check channel restrictions
-	if (channel->isMember(client))
-	{
-		std::cerr << "Error: Client is already a member of channel " << channelName << std::endl;
-		sendNumericReply(clientFd, ERR_USERONCHANNEL, replyTarget(client), client->getNickname() + " " + channelName, "is already on channel");
-		return;
-	}
-	if (channel->isInviteOnly())
-	{
-		std::cerr << "Error: Channel " << channelName << " is invite-only." << std::endl;
-		sendNumericReply(clientFd, ERR_INVITEONLYCHAN, replyTarget(client), channelName, "Cannot join channel (+i)");
-		return;
-	}
-	if (channel->isPasswordProtected())
-	{
-		if (msg.getParams().size() < 2 || msg.getParams()[1] != channel->getPassword())
-		{
-			std::cerr << "Error: Incorrect or missing password for channel " << channelName << std::endl;
-			sendNumericReply(clientFd, ERR_BADCHANNELKEY, replyTarget(client), channelName, "Cannot join channel (+k)");
-			return;
-		}
-	}
-	if (channel->isUserLimitReached())
-	{
-		std::cerr << "Error: Channel " << channelName << " has reached its user limit." << std::endl;
-		sendNumericReply(clientFd, ERR_CHANNELISFULL, replyTarget(client), channelName, "Cannot join channel (+l)");
-		return;
-	}
-	if (channel->isBanned(client->getNickname()))
-	{
-		std::cerr << "Error: Client " << client->getNickname() << " is banned from channel " << channelName << std::endl;
-		sendNumericReply(clientFd, ERR_BANNEDFROMCHAN, replyTarget(client), channelName, "Cannot join channel (+b)");
-		return;
-	}
-	if (!channel->addMember(client))
-	{
-		std::cerr << "Error: addMember() rejected " << client->getNickname()
-			<< " for " << channelName << " despite passing the pre-checks above." << std::endl;
-		return;
-	}
-	client->joinChannel(channelName);
-	broadcastToChannel(channel, ":" + client->getNickname() + " JOIN " + channelName + "\r\n", client);
-	sendTopic(channel, client);
-	sendNamesList(channel, client);
-	// Debug print
-	std::cout << "Client " << client->getNickname() << " joined channel " << channelName << std::endl;
-}
 
 void Server::handleMode(const Message &msg, int clientFd)
 {
