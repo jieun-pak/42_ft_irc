@@ -10,6 +10,7 @@ SRCS	=	srcs/main.cpp \
 			srcs/Server.cpp \
 			srcs/handlers/ServerComandHandlers.cpp \
 			srcs/handlers/joinHandler.cpp \
+			srcs/handlers/topicHandler.cpp \
 			srcs/Client.cpp \
 			srcs/signal.cpp \
  			srcs/Channel.cpp \
