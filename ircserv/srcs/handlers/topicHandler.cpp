@@ -35,7 +35,7 @@ void Server::handleMode(const Message &msg, int clientFd)
     Channel *channel = _channels[channelName];
 
     // 3. Check client is in channel
-    if (!isClientInChannel(client, channelName))
+    if (!channel->isMember(client))
     {
         sendNumericReply(
             clientFd,

@@ -139,6 +139,18 @@ void Client::joinChannel(const std::string &channelName)
 	_joinedChannels.push_back(channelName);
 }
 
+void Client::leaveChannel(const std::string &channelName)
+{
+	for (std::vector<std::string>::iterator it = _joinedChannels.begin(); it != _joinedChannels.end(); ++it)
+	{
+		if (*it == channelName)
+		{
+			_joinedChannels.erase(it);
+			break;
+		}
+	}
+}
+
 const std::vector<std::string> &Client::getJoinedChannels() const
 {
 	return _joinedChannels;

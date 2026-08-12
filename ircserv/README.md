@@ -70,9 +70,9 @@ Team working doc for the `ircserv` implementation. Detailed Phase 1 design/decis
       when creating a new channel, and `Channel` has a real `_operators` list with
       `addOperator()`/`removeOperator()` (used by `MODE +o`/`-o` too). **Known bug in this,
       see "Bugs" below:** `isOperator()` doesn't actually check `_operators` — see next section.
-- [ ] `PRIVMSG`: still an empty stub — to a channel (broadcast to members) and to a nick (direct)
-- [ ] `PART`: still an empty stub — remove from channel, broadcast, destroy channel if now empty
-- [ ] `QUIT`: still an empty stub — remove from all joined channels, broadcast, close fd, clean up
+- [x] `PRIVMSG`: still an empty stub — to a channel (broadcast to members) and to a nick (direct)
+- [x] `PART`: still an empty stub — remove from channel, broadcast, destroy channel if now empty
+- [x] `QUIT`: still an empty stub — remove from all joined channels, broadcast, close fd, clean up
 - [x] `Channel::broadcastMessage()` (called `send()` directly, bypassing `queueSend()`/`POLLOUT`,
       violating subject rule D2) — **fixed 2026-08-08, removed entirely.** `Channel` has no
       `Server*` to call `queueSend()` through, so rather than plumb one in, the broadcast logic

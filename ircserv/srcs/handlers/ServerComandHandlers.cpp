@@ -203,30 +203,183 @@ void Server::handleTopic(const Message &msg, int clientFd)
 
 void Server::handlePart(const Message &msg, int clientFd)
 {
-	(void)msg;
-	(void)clientFd;
-	// 1. Check channel exists
+    // 0. Validate parameters
+    if (msg.getParams().size() < 1)
+    {
+        sendNumericReply(clientFd, ERR_NEEDMOREPARAMS, "", "PART", "Not enough parameters");
+        return;
+    }
+    
+    // 1. Check channel exists
+    const std::string &channelName = msg.getParams()[0];
+    if (!isChannelExists(channelName))
+    {
+        sendNumericReply(clientFd, ERR_NOSUCHCHANNEL, "", channelName, "No such channel");
+        return;
+    }
 
 	// 2. Check client is in channel
+    Client *client = getClient(clientFd);
+    Channel *channel = _channels[channelName];
+    if (!channel->isMember(client))
+    {
+        sendNumericReply(clientFd, ERR_NOTONCHANNEL, "", channelName, "You're not on that channel");
+        return;
+    }
+
 	// 3. Remove client from channel
+    client->leaveChannel(channelName);
+    channel->removeMember(client);
+
+    // to remove the channel if it is empty after the client leaves
+    if (channel->getMembers().empty())
+    {
+        _channels.erase(channelName);
+        delete channel;
+    }
+
 	// 4. Broadcast PART message
+    std::string partMsg = ":" + client->getNickname() + " PART " + channelName + "\r\n";
+    broadcastToChannel(channel, partMsg, client);
 }
 
 void Server::handlePrivmsg(const Message &msg, int clientFd)
 {
-	(void)msg;
-	(void)clientFd;
-	// 1. Validate target and text
-	// 2. Find target client/channel
-	// 3. Forward message
+    // 0. Get sender
+    Client *client = getClient(clientFd);
+    if (!client)
+        return;
+
+    // 1. Validate parameters
+    if (msg.getParams().size() < 2)
+    {
+        sendNumericReply(
+            clientFd,
+            ERR_NEEDMOREPARAMS,
+            replyTarget(client),
+            "PRIVMSG",
+            "Not enough parameters"
+        );
+        return;
+    }
+
+    // 2. Get target and message text
+    const std::string &target = msg.getParams()[0];
+    const std::string &text = msg.getParams()[1];
+
+    if (target.empty() || text.empty())
+    {
+        sendNumericReply(
+            clientFd,
+            ERR_NEEDMOREPARAMS,
+            replyTarget(client),
+            "PRIVMSG",
+            "Not enough parameters"
+        );
+        return;
+    }
+
+    // 3. Build PRIVMSG
+    std::string privmsg =
+        ":" + client->getNickname()
+        + " PRIVMSG " + target
+        + " :" + text + "\r\n";
+
+    // 4. Target is a channel
+    if (target[0] == '#')
+    {
+        std::map<std::string, Channel *>::iterator it =
+            _channels.find(target);
+
+        if (it == _channels.end())
+        {
+            sendNumericReply(
+                clientFd,
+                ERR_NOSUCHCHANNEL,
+                replyTarget(client),
+                target,
+                "No such channel"
+            );
+            return;
+        }
+
+        Channel *channel = it->second;
+
+        // Client must be a member of the channel
+        if (!channel->isMember(client))
+        {
+            sendNumericReply(
+                clientFd,
+                ERR_NOTONCHANNEL,
+                replyTarget(client),
+                target,
+                "You're not on that channel"
+            );
+            return;
+        }
+
+        // Send to all other channel members
+        broadcastToChannel(channel, privmsg, client);
+        return;
+    }
+
+    // 5. Target is another client
+    Client *targetClient = getClientByNickname(target);
+
+    if (!targetClient)
+    {
+        sendNumericReply(
+            clientFd,
+            ERR_NOSUCHNICK,
+            replyTarget(client),
+            target,
+            "No such nick"
+        );
+        return;
+    }
+
+    // 6. Send direct message
+    queueSend(targetClient->getFd(), privmsg);
 }
 
 void Server::handleQuit(const Message &msg, int clientFd)
 {
-	(void)msg;
-	(void)clientFd;
-	// 1. Notify all joined channels
-	// 2. Remove client from channels
-	// 3. Close socket
-	// 4. Remove client from server
+    (void)msg;
+
+    Client *client = getClient(clientFd);
+    if (!client)
+        return;
+
+    // 1. Notify all joined channels
+    std::string quitMsg =
+        ":" + client->getNickname()
+        + " QUIT :Client disconnected\r\n";
+
+    for (std::map<std::string, Channel *>::iterator it = _channels.begin();
+         it != _channels.end(); ++it)
+    {
+        Channel *channel = it->second;
+
+        if (channel->isMember(client))
+            broadcastToChannel(channel, quitMsg, client);
+    }
+
+    // 2. Remove client from all channels
+    for (std::map<std::string, Channel *>::iterator it = _channels.begin();
+         it != _channels.end(); ++it)
+    {
+        Channel *channel = it->second;
+
+        if (channel->isMember(client))
+        {
+            channel->removeMember(client);
+            client->leaveChannel(channel->getName());
+        }
+    }
+
+    // 3. Close socket
+    close(clientFd);
+
+    // 4. Remove client from server
+    _clients.erase(clientFd);
 }
