@@ -349,7 +349,8 @@ void Server::handleQuit(const Message &msg, int clientFd)
     if (!client)
         return;
 
-    // 1. Notify all joined channels
+    // 1. Notify all joined channels — must happen before disconnectClient()
+    // below, which removes this client from those channels and frees it
     std::string quitMsg =
         ":" + client->getNickname()
         + " QUIT :Client disconnected\r\n";
@@ -363,22 +364,9 @@ void Server::handleQuit(const Message &msg, int clientFd)
             broadcastToChannel(channel, quitMsg, client);
     }
 
-    // 2. Remove client from all channels
-    for (std::map<std::string, Channel *>::iterator it = _channels.begin();
-         it != _channels.end(); ++it)
-    {
-        Channel *channel = it->second;
-
-        if (channel->isMember(client))
-        {
-            channel->removeMember(client);
-            client->leaveChannel(channel->getName());
-        }
-    }
-
-    // 3. Close socket
-    close(clientFd);
-
-    // 4. Remove client from server
-    _clients.erase(clientFd);
+    // 2. disconnectClient() does channel-membership cleanup, close(), frees
+    // the Client*, and defers the _pfds removal to after eventLoop's scan
+    // (D5) — doing this by hand used to leak the Client* and leave a stale
+    // pollfd in _pfds that could later misroute to a reused fd.
+    disconnectClient(clientFd);
 }
