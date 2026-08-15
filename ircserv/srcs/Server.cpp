@@ -238,29 +238,33 @@ Message Server::parse(const std::string& line)
 
 Server::CommandType Server::getCommandType(const std::string& command)
 {
-	if (command == "PASS")
+	std::string upper = command;
+	for (size_t i = 0; i < upper.size(); ++i)
+		upper[i] = std::toupper(upper[i]);
+
+	if (upper == "PASS")
 		return CMD_PASS;
-	if (command == "NICK")
+	if (upper == "NICK")
 		return CMD_NICK;
-	if (command == "USER")
+	if (upper == "USER")
 		return CMD_USER;
-	if (command == "JOIN")
+	if (upper == "JOIN")
 		return CMD_JOIN;
-	if (command == "MODE")
+	if (upper == "MODE")
 		return CMD_MODE;
-	if (command == "PART")
+	if (upper == "PART")
 		return CMD_PART;
-	if (command == "PRIVMSG")
+	if (upper == "PRIVMSG")
 		return CMD_PRIVMSG;
-	if (command == "QUIT")
+	if (upper == "QUIT")
 		return CMD_QUIT;
-	if (command == "PING")
+	if (upper == "PING")
 		return CMD_PING;
-	if (command == "TOPIC")
+	if (upper == "TOPIC")
 		return CMD_TOPIC;
-	if (command == "KICK")
+	if (upper == "KICK")
 		return CMD_KICK;
-	if (command == "INVITE")
+	if (upper == "INVITE")
 		return CMD_INVITE;
 	return CMD_UNKNOWN;
 }
