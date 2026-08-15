@@ -19,7 +19,7 @@ void Server::handleMode(const Message &msg, int clientFd)
 
     const std::string &target = msg.getParams()[0];
 
-    // 2. We only handle MODE #channel ... but not MODE <nickname>(not target)
+    // 2. We only handle `MODE #channel` ... but not `MODE <nickname>`(not target)
     if (target[0] != '#')
     {
         return;
