@@ -227,6 +227,12 @@ Team working doc for the `ircserv` implementation. Detailed Phase 1 design/decis
       only fetched partway through the function (after first two early-return checks).
       Fix: moved `Client *client = getClient(clientFd);` to the top of `handlePart` with
       `!client` guard, now uses `replyTarget(client)` in all three error replies.
+- [x] **MODE changes didn't show confirmation to the mode setter — fixed 2026-08-15.**
+      When jin issued `/mode #channel +i`, the change was broadcast to other channel
+      members but jin received no visual feedback in irssi. Real IRC echoes the MODE
+      message back to the setter. Fix: added `queueSend(clientFd, modeMessage)` before
+      `broadcastToChannel()` so the mode setter sees their own MODE line, matching
+      real IRC behavior (matches how TOPIC self-echoes work).
 
 ## Bug found in manual testing, 2026-08-08 (registration order-dependency)
 - [x] **Welcome message never fired if `NICK` arrived after `USER` — fixed.** The
