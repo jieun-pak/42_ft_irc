@@ -56,7 +56,8 @@ class Server
     	    CMD_QUIT,
     	    CMD_PING,
     	    CMD_TOPIC,
-    	    CMD_KICK
+    	    CMD_KICK,
+    	    CMD_INVITE
     	};
 
     	CommandType getCommandType(const std::string& command);
@@ -99,6 +100,7 @@ class Server
 		void	handlePing(const Message& msg, int clientFd);
 		void	handleTopic(const Message& msg, int clientFd);
 		void	handleKick(const Message& msg, int clientFd);
+		void	handleInvite(const Message& msg, int clientFd);
 
 		// JOIN command helpers
 		void	sendTopic(Channel* channel, Client* client);

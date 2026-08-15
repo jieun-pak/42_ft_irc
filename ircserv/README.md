@@ -10,8 +10,8 @@ Team working doc for the `ircserv` implementation. Detailed Phase 1 design/decis
 
 - [x] Phase 1 — Skeleton + server loop (socket → poll() → accept)
 - [x] Phase 2 — Registration (PASS / NICK / USER → 001 RPL_WELCOME)
-- [~] Phase 3 — Channels + messaging (JOIN / PRIVMSG / PART / QUIT) — all four implemented and wired in; `QUIT` has a real bug, see Bugs below
-- [~] Phase 4 — Operator commands (KICK / INVITE / TOPIC / MODE i,t,k,o,l) — MODE and TOPIC implemented and wired in; KICK/INVITE not started
+- [x] Phase 3 — Channels + messaging (JOIN / PRIVMSG / PART / QUIT) — all four implemented, wired in, and **live-verified 2026-08-15**
+- [x] Phase 4 — Operator commands (KICK / INVITE / TOPIC / MODE i,t,k,o,l) — all implemented and wired in; **live-verified 2026-08-15**
 
 > `[x]` done · `[~]` in progress · `[ ]` not started
 
@@ -134,10 +134,20 @@ Team working doc for the `ircserv` implementation. Detailed Phase 1 design/decis
       becomes the new first member would inherit operator status never granted to them. Now
       `isOperator()` searches `_operators` (mirrors `isMember()` searching `_members`), so
       `+o`/`-o` actually take effect for whoever they're applied to.
-- [ ] `KICK #channel nick [:reason]` — not started, no `CMD_KICK`/`handleKick` at all yet
-- [ ] `INVITE nick #channel` — not started, no `CMD_INVITE`/`handleInvite` at all yet (and
-      `Channel` has no invite-list concept, so `+i` invite-only channels currently have no
-      way to let anyone in once set — worth keeping in mind when implementing INVITE)
+- [x] `KICK #channel nick [:reason]` — **implemented 2026-08-15**. Operator-only, checks target
+      exists and is in channel, broadcasts KICK to channel, removes target and deletes empty
+      channel. Sends `401`/`403`/`442`/`482`/`441` error numerics.
+- [x] `INVITE nick #channel` — **implemented 2026-08-15**. Checks target nick exists, channel
+      exists, inviter is in channel, and target is not already in channel. Sends INVITE message
+      to target, sends `341 RPL_INVITING` confirmation to inviter. Verified with nc and irssi
+      (nc shows 341, irssi suppresses it from main window but invitee receives the invite).
+      **Invite list support (for +i channels) — 2026-08-15:** when a client is invited, they're
+      added to `Channel._invitedUsers` via `channel->addInvited(target)`. When they try to
+      JOIN a +i channel, `handleJoin` checks `channel->isInvited(client)` — if invited, they're
+      allowed to join; if not invited, they get `473 ERR_INVITEONLYCHAN`. Upon joining, the
+      client is removed from the invite list via `channel->removeInvited(client)` (they've
+      "used" the invite). Three new methods in `Channel`: `addInvited()`, `removeInvited()`,
+      `isInvited()`, following the same pattern as banned-users and operators lists.
 - [ ] `Channel.hpp` declares an `AddMemberResult` enum (`ADD_SUCCESS`/`ALREADY_MEMBER`/
       `CHANNEL_FULL`) that nothing uses — `addMember()` still returns plain `bool`. Looks
       like a leftover from an in-progress refactor toward more granular error reporting;
@@ -212,17 +222,12 @@ Team working doc for the `ircserv` implementation. Detailed Phase 1 design/decis
       that becomes empty as a result — it's left in `_channels` with zero members until
       something else joins it again. Low severity (a few live but empty `Channel` objects,
       not a leak on program exit since `~Server()` still frees everything), not fixed.
-- [ ] **`handlePart`'s three `sendNumericReply()` calls pass `""` as the target instead of
-      `replyTarget(client)`** — e.g. `sendNumericReply(clientFd, ERR_NEEDMOREPARAMS, "",
-      "PART", "Not enough parameters")` produces `:ircserv 461  PART :Not enough
-      parameters` (double space, empty target) instead of `:ircserv 461 jin PART :Not
-      enough parameters`. Every other handler in the codebase uses `replyTarget(client)`
-      here. Root cause: `client` is only fetched via `getClient(clientFd)` partway through
-      the function (after the first two early-return checks), so those two checks don't
-      have a `client` in scope yet to pass — unlike every other handler, which fetches
-      `client` as its very first line. **Fix direction:** move `Client *client =
-      getClient(clientFd);` to the top of `handlePart` (with a `!client` guard, matching
-      the other handlers) and use `replyTarget(client)` in all three calls.
+- [x] **`handlePart`'s three `sendNumericReply()` calls pass `""` as the target — fixed 2026-08-15.**
+      Was producing `:ircserv 461  PART :Not enough parameters` (double space, empty target)
+      instead of `:ircserv 461 jin PART :Not enough parameters`. Root cause: `client` was
+      only fetched partway through the function (after first two early-return checks).
+      Fix: moved `Client *client = getClient(clientFd);` to the top of `handlePart` with
+      `!client` guard, now uses `replyTarget(client)` in all three error replies.
 
 ## Bug found in manual testing, 2026-08-08 (registration order-dependency)
 - [x] **Welcome message never fired if `NICK` arrived after `USER` — fixed.** The
@@ -257,12 +262,13 @@ Team working doc for the `ircserv` implementation. Detailed Phase 1 design/decis
 | `PING`/`PONG` keepalive | [x] works — client sends PING, server replies PONG (required by RFC; clients timeout without it) |
 | `NAMES` list on JOIN | [x] works — now shows member nicknames with `@` prefix for operators (was empty, fixed 2026-08-15) |
 | `JOIN` | [x] works, sends `331`/`332`/`353`/`366` + broadcasts `JOIN` to the channel; first joiner becomes operator; **gap:** joiner isn't self-echoed the `JOIN` line itself |
-| `MODE` (`i`,`t`,`k`,`l`,`o`) | [x] works, operator-gated, broadcasts to channel (sender not self-echoed) |
+| `MODE` (`i`,`t`,`k`,`l`,`o`) | [x] works, operator-gated, broadcasts to channel (sender not self-echoed); +i (invite-only) enforced on JOIN |
 | `TOPIC` | [x] works — query always allowed; set is operator-gated when `+t`; self-echoed to setter + broadcast to channel |
 | `PRIVMSG` (channel + direct) | [x] works — membership-gated for channels, `queueSend()` direct for nicks; **broadcast verified 2026-08-15 with 2+ clients** |
 | `PART` | [~] works, but its error replies are malformed (empty target — see Bugs) |
 | `QUIT` | [x] works — now goes through `disconnectClient()` for cleanup (fixed 2026-08-15) |
-| `KICK` / `INVITE` | [ ] not started |
+| `KICK` | [x] works — operator-only, broadcasts to channel, removes target; `401`/`403`/`442`/`482`/`441` errors |
+| `INVITE` | [x] works — sends INVITE to target, sends `341 RPL_INVITING` to inviter; `401`/`403`/`442`/`443` errors |
 
 ## 1. Build checks
 ```bash
@@ -487,6 +493,32 @@ Setup: Window 2 (`jin`) and Window 3 (`ha`) both `JOIN #general`.
   `PRIVMSG #general :hi` → `:ircserv 442 <nick> #general :You're not on that channel`.
 - **Unhappy — nick doesn't exist:** `PRIVMSG nobody :hi` → `:ircserv 401 jin nobody :No such nick`.
 
+### KICK
+Setup: Window 2 (`jin`, operator) and Window 3 (`ha`, member) both in `#general`.
+- **Happy:** Window 2 sends `KICK #general ha :you're annoying` → Window 3 sees `:jin KICK #general ha :you're annoying`;
+  Window 3 is removed from the channel; `#general` persists (still has jin).
+- **Happy — last member kicked, channel destroyed:** if `ha` was the only other member, `#general` is destroyed.
+- **Unhappy — non-operator tries KICK:** Window 3 sends `KICK #general jin` → Window 3:
+  `:ircserv 482 ha #general :You're not channel operator`.
+- **Unhappy — kicker not in channel:** a registered client outside `#general` sends `KICK #general jin` →
+  `:ircserv 442 <nick> #general :You're not on that channel`.
+- **Unhappy — target doesn't exist:** `KICK #general nobody` → `:ircserv 401 jin nobody :No such nick`.
+- **Unhappy — target not in channel:** `KICK #general <registered-nick-not-in-channel>` →
+  `:ircserv 441 jin <nick> :User is not on that channel`.
+- **Unhappy — channel doesn't exist:** `KICK #nope jin` → `:ircserv 403 jin #nope :No such channel`.
+
+### INVITE
+Setup: Window 2 (`jin`) in `#general`, Window 3 (`ha`, connected but not in `#general`).
+- **Happy:** Window 2 sends `INVITE ha #general` → Window 3 sees `:jin INVITE ha #general`;
+  Window 2 receives `341 ha #general` (invisible to irssi main window, visible in raw nc).
+  Window 3 can then `JOIN #general` without restriction (no real invite-list tracking yet).
+- **Unhappy — target already in channel:** if `ha` is already in `#general`, Window 2 sends `INVITE ha #general` →
+  Window 2: `:ircserv 443 jin ha #general :is already on channel`.
+- **Unhappy — target doesn't exist:** `INVITE nobody #general` → `:ircserv 401 jin nobody :No such nick`.
+- **Unhappy — channel doesn't exist:** `INVITE ha #nope` → `:ircserv 403 jin #nope :No such channel`.
+- **Unhappy — inviter not in channel:** a registered client outside `#general` sends `INVITE ha #general` →
+  `:ircserv 442 <nick> #general :You're not on that channel`.
+
 ### PART
 Setup: Window 2 and Window 3 both in `#general`.
 - **Happy:** Window 2 sends `PART #general` → Window 3 sees `:jin PART #general`; Window 2
@@ -553,3 +585,7 @@ ps aux | grep ircserv | grep -v grep           # after tests: no leftover server
 # Defense Note
 - irssi's CAP unknown — NOT a bug. 
    - CAP is a modern IRC extension for optional capability negotiation. When irssi sends it and we return 421 ERR_UNKNOWNCOMMAND, irssi gracefully ignores it (it's designed for servers that don't support CAP). The message is informational, not an error — connection proceeds normally.
+- automatic PING by PING/PONG handler: Real IRC clients send PING periodically to:
+   - Keep the connection alive
+   - Detect if the server hangs/disconnects
+   - Measure latency

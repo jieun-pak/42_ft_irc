@@ -199,3 +199,31 @@ void Channel::removeOperator(Client *client)
 		}
 	}
 }
+
+void Channel::addInvited(Client *client)
+{
+	if (!isInvited(client))
+		_invitedUsers.push_back(client);
+}
+
+void Channel::removeInvited(Client *client)
+{
+	for (std::vector<Client *>::iterator it = _invitedUsers.begin(); it != _invitedUsers.end(); ++it)
+	{
+		if (*it == client)
+		{
+			_invitedUsers.erase(it);
+			break;
+		}
+	}
+}
+
+bool Channel::isInvited(Client *client) const
+{
+	for (std::vector<Client *>::const_iterator it = _invitedUsers.begin(); it != _invitedUsers.end(); ++it)
+	{
+		if (*it == client)
+			return true;
+	}
+	return false;
+}

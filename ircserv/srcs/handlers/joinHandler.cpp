@@ -92,8 +92,8 @@ void Server::handleJoin(const Message &msg, int clientFd)
             return;
         }
 
-        // 3. Check invite-only
-        if (channel->isInviteOnly())
+        // 3. Check invite-only (allowed if client was invited)
+        if (channel->isInviteOnly() && !channel->isInvited(client))
         {
             sendNumericReply(
                 clientFd,
@@ -190,6 +190,9 @@ void Server::handleJoin(const Message &msg, int clientFd)
 
     // 11. Update client's channel membership
     client->joinChannel(channelName);
+
+    // 11b. Remove from invite list (they've "used" the invite)
+    channel->removeInvited(client);
 
     // 12. Broadcast JOIN to channel members
     std::string joinMessage =

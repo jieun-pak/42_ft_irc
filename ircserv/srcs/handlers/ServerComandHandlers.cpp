@@ -202,27 +202,30 @@ void Server::handleTopic(const Message &msg, int clientFd)
 
 void Server::handlePart(const Message &msg, int clientFd)
 {
+    Client *client = getClient(clientFd);
+    if (!client)
+        return;
+
     // 0. Validate parameters
     if (msg.getParams().size() < 1)
     {
-        sendNumericReply(clientFd, ERR_NEEDMOREPARAMS, "", "PART", "Not enough parameters");
+        sendNumericReply(clientFd, ERR_NEEDMOREPARAMS, replyTarget(client), "PART", "Not enough parameters");
         return;
     }
-    
+
     // 1. Check channel exists
     const std::string &channelName = msg.getParams()[0];
     if (!isChannelExists(channelName))
     {
-        sendNumericReply(clientFd, ERR_NOSUCHCHANNEL, "", channelName, "No such channel");
+        sendNumericReply(clientFd, ERR_NOSUCHCHANNEL, replyTarget(client), channelName, "No such channel");
         return;
     }
 
 	// 2. Check client is in channel
-    Client *client = getClient(clientFd);
     Channel *channel = _channels[channelName];
     if (!channel->isMember(client))
     {
-        sendNumericReply(clientFd, ERR_NOTONCHANNEL, "", channelName, "You're not on that channel");
+        sendNumericReply(clientFd, ERR_NOTONCHANNEL, replyTarget(client), channelName, "You're not on that channel");
         return;
     }
 
@@ -465,4 +468,62 @@ void Server::handleKick(const Message &msg, int clientFd)
         _channels.erase(channelName);
         delete channel;
     }
+}
+
+void Server::handleInvite(const Message &msg, int clientFd)
+{
+    Client *client = getClient(clientFd);
+    if (!client)
+        return;
+
+    // 1. Validate parameters
+    if (msg.getParams().size() < 2)
+    {
+        sendNumericReply(clientFd, ERR_NEEDMOREPARAMS, replyTarget(client), "INVITE", "Not enough parameters");
+        return;
+    }
+
+    const std::string &targetNick = msg.getParams()[0];
+    const std::string &channelName = msg.getParams()[1];
+
+    // 2. Check target nick exists
+    Client *target = getClientByNickname(targetNick);
+    if (!target)
+    {
+        sendNumericReply(clientFd, ERR_NOSUCHNICK, replyTarget(client), targetNick, "No such nick");
+        return;
+    }
+
+    // 3. Check channel exists
+    if (!isChannelExists(channelName))
+    {
+        sendNumericReply(clientFd, ERR_NOSUCHCHANNEL, replyTarget(client), channelName, "No such channel");
+        return;
+    }
+
+    Channel *channel = _channels[channelName];
+
+    // 4. Check inviter is in channel
+    if (!channel->isMember(client))
+    {
+        sendNumericReply(clientFd, ERR_NOTONCHANNEL, replyTarget(client), channelName, "You're not on that channel");
+        return;
+    }
+
+    // 5. Check target is not already in channel
+    if (channel->isMember(target))
+    {
+        sendNumericReply(clientFd, ERR_USERONCHANNEL, replyTarget(client), targetNick + " " + channelName, "is already on channel");
+        return;
+    }
+
+    // 6. Send INVITE message to target
+    std::string inviteMsg = ":" + client->getNickname() + " INVITE " + targetNick + " " + channelName + "\r\n";
+    queueSend(target->getFd(), inviteMsg);
+
+    // 7. Send confirmation to inviter (341 RPL_INVITING)
+    sendNumericReply(clientFd, RPL_INVITING, replyTarget(client), targetNick, channelName);
+
+    // 8. Add target to invite list (so they can join +i channels)
+    channel->addInvited(target);
 }

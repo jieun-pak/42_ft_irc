@@ -26,6 +26,7 @@ class Channel
 		std::string _password;
 		size_t _userLimit;
 		std::vector<std::string> _bannedUsers;
+		std::vector<Client*> _invitedUsers;
 		bool isRestrictedTopic;
 
 		Channel();
@@ -63,6 +64,11 @@ class Channel
 		void setRestrictedTopic(bool restricted);
 		void addOperator(Client *client);
 		void removeOperator(Client *client);
+
+		// Invite list (for +i invite-only channels)
+		void addInvited(Client *client);
+		void removeInvited(Client *client);
+		bool isInvited(Client *client) const;
 };
 
 #endif // CHANNEL_HPP
