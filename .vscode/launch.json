@@ -1,0 +1,66 @@
+{
+	// Use IntelliSense to learn about possible attributes.
+	// Hover to view descriptions of existing attributes.
+	// For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+	"version": "0.2.0",
+	"configurations": [
+		{
+			"name": "Debug ircserv",
+			"type": "cppdbg",
+			"request": "launch",
+			"program": "${workspaceFolder}/ircserv/ircserv",
+			// subject: ./ircserv <port> <password> — edit these or use the
+			// "Debug ircserv (prompt args)" config below to be asked each run
+			"args": ["6667", "mypassword"],
+			"stopAtEntry": false,
+			"cwd": "${workspaceFolder}/ircserv",
+			"environment": [],
+			"externalConsole": false,
+			"MIMode": "gdb",
+			"miDebuggerPath": "/usr/bin/gdb",
+			"setupCommands": [
+				{
+					"description": "Enable pretty-printing for gdb",
+					"text": "-enable-pretty-printing",
+					"ignoreFailures": true
+				}
+			],
+			"preLaunchTask": "make (ircserv)"
+		},
+		{
+			"name": "Debug ircserv (prompt args)",
+			"type": "cppdbg",
+			"request": "launch",
+			"program": "${workspaceFolder}/ircserv/ircserv",
+			"args": ["${input:port}", "${input:password}"],
+			"stopAtEntry": false,
+			"cwd": "${workspaceFolder}/ircserv",
+			"environment": [],
+			"externalConsole": false,
+			"MIMode": "gdb",
+			"miDebuggerPath": "/usr/bin/gdb",
+			"setupCommands": [
+				{
+					"description": "Enable pretty-printing for gdb",
+					"text": "-enable-pretty-printing",
+					"ignoreFailures": true
+				}
+			],
+			"preLaunchTask": "make (ircserv)"
+		}
+	],
+	"inputs": [
+		{
+			"id": "port",
+			"type": "promptString",
+			"description": "Port for ircserv to listen on",
+			"default": "6667"
+		},
+		{
+			"id": "password",
+			"type": "promptString",
+			"description": "Connection password for ircserv",
+			"default": "mypassword"
+		}
+	]
+}

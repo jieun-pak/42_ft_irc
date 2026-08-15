@@ -8,7 +8,8 @@
 			"intelliSenseMode": "linux-gcc-x64",
 			"includePath": [
 				"${workspaceFolder}/ircserv/includes",
-				"${workspaceFolder}/ircserv/srcs"
+				"${workspaceFolder}/ircserv/srcs",
+				"${workspaceFolder}/ircserv/srcs/handlers"
 			],
 			"defines": [],
 			"compileCommands": "${workspaceFolder}/compile_commands.json"

@@ -119,12 +119,10 @@ Team working doc for the `ircserv` implementation. Detailed Phase 1 design/decis
 ### Phase 4 — Operator commands (in progress)
 - [x] `handleMode` (`+/-i`, `+/-t`, `+/-k`, `+/-l`, `+/-o`) is written **and wired in** —
       `CMD_MODE` is in the `CommandType` enum, `getCommandType()`, and the `executeCommand()`
-      switch (doc was stale: this was previously flagged as unwired, no longer true). Every
-      branch replies with a real numeric; see the earlier "which case do I need std::cerr vs
-      sendNumeric" review — this handler was already fully converted before that review.
-      **Housekeeping note:** it now lives in `srcs/handlers/topicHandler.cpp`, not
-      `handleTopic` — filename doesn't match contents, harmless (still compiles and links
-      fine either way) but worth a rename if you're touching that file again.
+      switch. Every branch replies with a real numeric. **Renamed 2026-08-15:** the file
+      containing both `handleMode()` and `handleTopic()` was called `topicHandler.cpp`;
+      renamed to `srcs/handlers/modeHandler.cpp` for clarity since MODE is the primary
+      handler (longer, more complex).
 - [x] **Bug found 2026-08-08: `Channel::isOperator()` didn't check `_operators` at all —
       fixed same day.** It used to check `!_members.empty() && _members[0] == client` ("are
       you literally the first member"), while `addOperator()`/`removeOperator()` maintain a

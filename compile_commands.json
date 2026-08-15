@@ -1,0 +1,42 @@
+[
+	{
+		"directory": "/sgoinfre/goinfre/Perso/jiepark/42_ft_irc/ircserv",
+		"command": "c++ -Wall -Wextra -Werror -std=c++98 -c srcs/main.cpp -o srcs/main.o",
+		"file": "srcs/main.cpp"
+	},
+	{
+		"directory": "/sgoinfre/goinfre/Perso/jiepark/42_ft_irc/ircserv",
+		"command": "c++ -Wall -Wextra -Werror -std=c++98 -c srcs/Server.cpp -o srcs/Server.o",
+		"file": "srcs/Server.cpp"
+	},
+	{
+		"directory": "/sgoinfre/goinfre/Perso/jiepark/42_ft_irc/ircserv",
+		"command": "c++ -Wall -Wextra -Werror -std=c++98 -c srcs/handlers/ServerComandHandlers.cpp -o srcs/handlers/ServerComandHandlers.o",
+		"file": "srcs/handlers/ServerComandHandlers.cpp"
+	},
+	{
+		"directory": "/sgoinfre/goinfre/Perso/jiepark/42_ft_irc/ircserv",
+		"command": "c++ -Wall -Wextra -Werror -std=c++98 -c srcs/handlers/joinHandler.cpp -o srcs/handlers/joinHandler.o",
+		"file": "srcs/handlers/joinHandler.cpp"
+	},
+	{
+		"directory": "/sgoinfre/goinfre/Perso/jiepark/42_ft_irc/ircserv",
+		"command": "c++ -Wall -Wextra -Werror -std=c++98 -c srcs/handlers/topicHandler.cpp -o srcs/handlers/topicHandler.o",
+		"file": "srcs/handlers/topicHandler.cpp"
+	},
+	{
+		"directory": "/sgoinfre/goinfre/Perso/jiepark/42_ft_irc/ircserv",
+		"command": "c++ -Wall -Wextra -Werror -std=c++98 -c srcs/Client.cpp -o srcs/Client.o",
+		"file": "srcs/Client.cpp"
+	},
+	{
+		"directory": "/sgoinfre/goinfre/Perso/jiepark/42_ft_irc/ircserv",
+		"command": "c++ -Wall -Wextra -Werror -std=c++98 -c srcs/signal.cpp -o srcs/signal.o",
+		"file": "srcs/signal.cpp"
+	},
+	{
+		"directory": "/sgoinfre/goinfre/Perso/jiepark/42_ft_irc/ircserv",
+		"command": "c++ -Wall -Wextra -Werror -std=c++98 -c srcs/Channel.cpp -o srcs/Channel.o",
+		"file": "srcs/Channel.cpp"
+	}
+]
