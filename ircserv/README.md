@@ -245,9 +245,11 @@ Team working doc for the `ircserv` implementation. Detailed Phase 1 design/decis
       fixes the earlier double-welcome-on-repeat-`USER`/`PASS` bug, and `Client::isRegistered()`
       is now the shared source of truth used by `handleJoin`'s auth check above.
 
-## Optinal todos (in order of importance)
-- [] accept lower case (pass), not only upper case(PASS) like IRC
-- [] handle join #general, #food (like real IRC): skip it, when we don't have time
+## Optional todos (in order of importance)
+- [x] **accept lower case (pass), not only upper case(PASS) — implemented 2026-08-15.** 
+      Commands are now case-insensitive: `pass`, `PASS`, `PaSs` all work. The `getCommandType()` 
+      function converts input to uppercase before comparing against command strings.
+- [ ] handle join #general, #food (like real IRC): skip it, when we don't have time
 ---
 
 # How to Test
@@ -262,6 +264,7 @@ Team working doc for the `ircserv` implementation. Detailed Phase 1 design/decis
 | `PASS` → `NICK` → `USER` → welcome | [x] real numeric `001 RPL_WELCOME` |
 | Errors (wrong pass, dup nick, missing params, etc.) | [x] real numerics to the client (`464`/`433`/`461`/`462`/`451`) — **and** still logged on server stderr |
 | Unknown command | [x] `421 ERR_UNKNOWNCOMMAND` |
+| Case-insensitive commands | [x] `pass`, `PASS`, `PaSs` all work (Tier 5 enhancement) |
 | Commands before `PASS` succeeds, or before registration completes | [x] `451 ERR_NOTREGISTERED` (`PASS` is the gatekeeper — see Phase 2) |
 | Real IRC client (irssi) full registration | [x] `001` now sent — **live-verified 2026-08-15** against irssi 1.2.3, multi-client broadcast working |
 | `PING`/`PONG` keepalive | [x] works — client sends PING, server replies PONG (required by RFC; clients timeout without it) |
@@ -560,13 +563,52 @@ single `command` line only when the line ending arrives. Works because each
 - Kill/restart clients repeatedly: server must never crash or leak fds.
 
 ## 8. Reference client (irssi)
+
+### Quick start (one-time connection)
 ```bash
 irssi
-/connect 127.0.0.1 6667 mypassword jin
+/connect localhost 6669 testpass
+/nick jin
+/join #test
 ```
-**Should now work** — `001 RPL_WELCOME` landed 2026-08-08. Not yet re-verified live
-against irssi (deferred to manual testing); a working reference client is a hard
-subject requirement for evaluation.
+
+If irssi is configured to autoconnect to a default server (e.g., `irc.server.com`), the
+above `/connect` command will override that and connect to your local ircserv instead.
+
+### Persistent setup (if testing multiple times)
+If you want irssi to remember your local server for future sessions:
+```bash
+irssi
+/server add -auto localhost 6669 testpass
+/save
+```
+
+Then close and reopen irssi — it will auto-connect to localhost:6669. To override the
+password later:
+```bash
+/connect localhost 6669 differentpass
+```
+
+### Troubleshooting irssi connections
+- **Issue:** irssi tries to connect to `irc.server.com` or some other default server instead of localhost
+  - **Solution:** Use `/connect localhost 6669 testpass` to explicitly connect to your local server
+  - **Alternative:** Check `/server list` to see configured servers; if an unwanted server has `autoconnect` set, use `/server remove` to delete it
+
+- **Issue:** Connection fails with "port 6667" error
+  - **Check:** Make sure your ircserv is running on the same port: `./ircserv 6669 testpass`
+  - The command `/connect localhost 6669 testpass` means: connect to `localhost` on port `6669` with password `testpass`
+
+### What to verify in irssi
+Once connected (`001 RPL_WELCOME` appears):
+1. **Registration works:** You see welcome message with your nickname
+2. **JOIN works:** `/join #testchannel` — channel name appears in window, you're added to members
+3. **MODE works:** `/mode #testchannel +i` — mode change confirmation appears in window (self-echo)
+4. **PRIVMSG works:** Type messages in a channel, see them echoed back (self-echo) and relayed to other members
+5. **Invite-only channels:** One client joins and sets `/mode #ch +i`, another client tries `/join #ch` and gets `473 ERR_INVITEONLYCHAN`
+
+**Known irssi quirks (not bugs):**
+- `CAP Unknown command` — irssi sends CAP (capability negotiation) which we don't support; we correctly return 421, and irssi gracefully ignores it
+- `/INVITE` confirmation (341) — doesn't appear in main window, but the invitee receives the invite (check with nc to verify 341 is being sent)
 
 ## 9. Leaks / cleanup
 ```bash
