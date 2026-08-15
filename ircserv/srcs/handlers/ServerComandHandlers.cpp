@@ -483,18 +483,37 @@ void Server::handleInvite(const Message &msg, int clientFd)
         return;
     }
 
-    const std::string &targetNick = msg.getParams()[0];
-    const std::string &channelName = msg.getParams()[1];
+    // 2. detect which param is channel (starts with #) and which is nick
+    std::string targetNick;
+    std::string channelName;
 
-    // 2. Check target nick exists
-    Client *target = getClientByNickname(targetNick);
-    if (!target)
+    if (msg.getParams()[0][0] == '#')
     {
-        sendNumericReply(clientFd, ERR_NOSUCHNICK, replyTarget(client), targetNick, "No such nick");
+        // First param is channel, second is nick
+        channelName = msg.getParams()[0];
+        targetNick = msg.getParams()[1];
+    }
+    else if (msg.getParams()[1][0] == '#')
+    {
+        // Second param is channel, first is nick
+        targetNick = msg.getParams()[0];
+        channelName = msg.getParams()[1];
+    }
+    else
+    {
+        // Neither param looks like a channel name
+        sendNumericReply(clientFd, ERR_NOSUCHCHANNEL, replyTarget(client), msg.getParams()[1], "No such channel");
         return;
     }
 
-    // 3. Check channel exists
+    // 4. Validate channel name format
+    if (!isValidChannelName(channelName))
+    {
+        sendNumericReply(clientFd, ERR_NOSUCHCHANNEL, replyTarget(client), channelName, "No such channel");
+        return;
+    }
+
+    // 5. Check channel exists
     if (!isChannelExists(channelName))
     {
         sendNumericReply(clientFd, ERR_NOSUCHCHANNEL, replyTarget(client), channelName, "No such channel");
@@ -503,27 +522,42 @@ void Server::handleInvite(const Message &msg, int clientFd)
 
     Channel *channel = _channels[channelName];
 
-    // 4. Check inviter is in channel
+    // 6. Check inviter is in channel
     if (!channel->isMember(client))
     {
         sendNumericReply(clientFd, ERR_NOTONCHANNEL, replyTarget(client), channelName, "You're not on that channel");
         return;
     }
 
-    // 5. Check target is not already in channel
+    // 7. If channel is invite-only, inviter must be operator (check BEFORE target nick)
+    if (channel->isInviteOnly() && !channel->isOperator(client))
+    {
+        sendNumericReply(clientFd, ERR_CHANOPRIVSNEEDED, replyTarget(client), channelName, "You're not channel operator");
+        return;
+    }
+
+    // 8. Check target nick exists
+    Client *target = getClientByNickname(targetNick);
+    if (!target)
+    {
+        sendNumericReply(clientFd, ERR_NOSUCHNICK, replyTarget(client), targetNick, "No such nick");
+        return;
+    }
+
+    // 9. Check target is not already in channel
     if (channel->isMember(target))
     {
         sendNumericReply(clientFd, ERR_USERONCHANNEL, replyTarget(client), targetNick + " " + channelName, "is already on channel");
         return;
     }
 
-    // 6. Send INVITE message to target
+    // 10. Send INVITE message to target
     std::string inviteMsg = ":" + client->getNickname() + " INVITE " + targetNick + " " + channelName + "\r\n";
     queueSend(target->getFd(), inviteMsg);
 
-    // 7. Send confirmation to inviter (341 RPL_INVITING)
+    // 11. Send confirmation to inviter (341 RPL_INVITING)
     sendNumericReply(clientFd, RPL_INVITING, replyTarget(client), targetNick, channelName);
 
-    // 8. Add target to invite list (so they can join +i channels)
+    // 12. Add target to invite list (so they can join +i channels)
     channel->addInvited(target);
 }
