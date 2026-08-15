@@ -17,9 +17,17 @@ void Server::handleMode(const Message &msg, int clientFd)
         return;
     }
 
-    const std::string &channelName = msg.getParams()[0];
+    const std::string &target = msg.getParams()[0];
 
-    // 2. Check channel exists
+    // 2. We only handle MODE #channel ... but not MODE <nickname>(not target)
+    if (target[0] != '#')
+    {
+        return;
+    }
+
+    const std::string &channelName = target;
+
+    // 3. Check channel exists
     if (!isChannelExists(channelName))
     {
         sendNumericReply(
