@@ -122,7 +122,9 @@ Team working doc for the `ircserv` implementation. Detailed Phase 1 design/decis
       switch. Every branch replies with a real numeric. **Renamed 2026-08-15:** the file
       containing both `handleMode()` and `handleTopic()` was called `topicHandler.cpp`;
       renamed to `srcs/handlers/modeHandler.cpp` for clarity since MODE is the primary
-      handler (longer, more complex).
+      handler (longer, more complex). **Bug fixed 2026-08-15:** MODE changes are now
+      self-echoed back to the mode setter (via `queueSend()`) in addition to being
+      broadcast to other channel members, matching real IRC behavior.
 - [x] **Bug found 2026-08-08: `Channel::isOperator()` didn't check `_operators` at all —
       fixed same day.** It used to check `!_members.empty() && _members[0] == client` ("are
       you literally the first member"), while `addOperator()`/`removeOperator()` maintain a
@@ -259,7 +261,7 @@ Team working doc for the `ircserv` implementation. Detailed Phase 1 design/decis
 | `PING`/`PONG` keepalive | [x] works — client sends PING, server replies PONG (required by RFC; clients timeout without it) |
 | `NAMES` list on JOIN | [x] works — now shows member nicknames with `@` prefix for operators (was empty, fixed 2026-08-15) |
 | `JOIN` | [x] works, sends `331`/`332`/`353`/`366` + broadcasts `JOIN` to the channel; first joiner becomes operator; **gap:** joiner isn't self-echoed the `JOIN` line itself |
-| `MODE` (`i`,`t`,`k`,`l`,`o`) | [x] works, operator-gated, broadcasts to channel (sender not self-echoed); +i (invite-only) enforced on JOIN |
+| `MODE` (`i`,`t`,`k`,`l`,`o`) | [x] works, operator-gated, self-echoed to setter + broadcast to channel; +i (invite-only) enforced on JOIN |
 | `TOPIC` | [x] works — query always allowed; set is operator-gated when `+t`; self-echoed to setter + broadcast to channel |
 | `PRIVMSG` (channel + direct) | [x] works — membership-gated for channels, `queueSend()` direct for nicks; **broadcast verified 2026-08-15 with 2+ clients** |
 | `PART` | [~] works, but its error replies are malformed (empty target — see Bugs) |

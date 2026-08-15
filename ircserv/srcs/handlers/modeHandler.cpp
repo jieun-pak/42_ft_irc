@@ -215,7 +215,7 @@ void Server::handleMode(const Message &msg, int clientFd)
             return;
     }
 
-    // 7. Broadcast MODE message
+    // 7. Broadcast MODE message (including self-echo to the mode setter)
     std::string modeMessage =
         ":" + client->getNickname()
         + " MODE " + channelName
@@ -226,5 +226,8 @@ void Server::handleMode(const Message &msg, int clientFd)
 
     modeMessage += "\r\n";
 
+    // Send to mode setter (self-echo)
+    queueSend(clientFd, modeMessage);
+    // Send to other channel members
     broadcastToChannel(channel, modeMessage, client);
 }
