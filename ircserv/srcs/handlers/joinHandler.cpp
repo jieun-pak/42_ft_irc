@@ -21,6 +21,16 @@ void Server::sendTopic(Channel* channel, Client* client)
 void Server::sendNamesList(Channel* channel, Client* client)
 {
     std::string namesList;
+    const std::vector<Client *> &members = channel->getMembers();
+
+    for (std::vector<Client *>::const_iterator it = members.begin(); it != members.end(); ++it)
+    {
+        if (it != members.begin())
+            namesList += " ";
+        if (channel->isOperator(*it))
+            namesList += "@";
+        namesList += (*it)->getNickname();
+    }
 
 	sendNumericReply(client->getFd(), RPL_NAMREPLY, replyTarget(client), "= " + channel->getName(), namesList);
 	sendNumericReply(client->getFd(), RPL_ENDOFNAMES, replyTarget(client), channel->getName(), "End of /NAMES list");
