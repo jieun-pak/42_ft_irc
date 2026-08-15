@@ -10,7 +10,7 @@ Team working doc for the `ircserv` implementation. Detailed Phase 1 design/decis
 
 - [x] Phase 1 — Skeleton + server loop (socket → poll() → accept)
 - [x] Phase 2 — Registration (PASS / NICK / USER → 001 RPL_WELCOME)
-- [~] Phase 3 — Channels + messaging (JOIN / PRIVMSG / PART / QUIT) — JOIN implemented and working; PRIVMSG/PART/QUIT still empty
+- [~] Phase 3 — Channels + messaging (JOIN / PRIVMSG / PART / QUIT) — all four implemented and wired in; `QUIT` has a real bug, see Bugs below
 - [~] Phase 4 — Operator commands (KICK / INVITE / TOPIC / MODE i,t,k,o,l) — MODE and TOPIC implemented and wired in; KICK/INVITE not started
 
 > `[x]` done · `[~]` in progress · `[ ]` not started
@@ -59,36 +59,62 @@ Team working doc for the `ircserv` implementation. Detailed Phase 1 design/decis
       `PRIVMSG #chan :hello world` — verified via `nc` (hand-traced params, no debug
       print of stored values yet; add one if you want to see it live during WHOIS/etc.)
 
+### Phase 2.5 — Critical protocol compliance (client compatibility)
+- [x] `PING`/`PONG` keepalive — **2026-08-09**, `CMD_PING` added, exempt from registration
+      gates (works anytime), responds with `PONG :<param>` or `PONG :ircserv` if no param.
+      Required by RFC 1459 and expected by all real IRC clients (irssi, weechat, etc.) to
+      verify the server is alive. Without this, clients timeout and disconnect thinking the
+      server is stuck. Also found and fixed **empty NAMES list bug** in same session (see below).
+- [x] **NAMES list was empty** — **fixed 2026-08-09**, `sendNamesList()` now iterates
+      `channel->getMembers()` and builds a string with operator prefixes (`@` for ops, space
+      for normal users), e.g. `@jin ha bob`. Was sending empty trailing parameter, so real
+      clients (irssi) displayed no names even though they were in the channel. Discovered during
+      first irssi test.
+- [x] **User modes mishandled as channel modes — fixed 2026-08-15.** irssi sends `MODE <nick>
+      +i` (user mode for invisible) during connection. Our `handleMode()` only implemented
+      channel modes (`MODE #channel ...`), so it treated the nickname as a channel name,
+      didn't find it, and returned `403 ERR_NOSUCHCHANNEL` — displayed by irssi as
+      `"<nick>: No such channel"`. Fix: check if first param starts with `#`; if not, it's a
+      user mode request, silently return (we don't implement user modes, but don't error either).
+      Verified against irssi 1.2.3 — clean connection now.
+
 ### Phase 3 — Channels + messaging (in progress)
 - [x] `Channel` class: name, members, topic, invite-only flag, password, user limit, banned-users list
-- [x] `JOIN`: creates channel if missing, adds member, sends `RPL_NOTOPIC`/`RPL_TOPIC` (331/332)
-      and `RPL_NAMREPLY`/`RPL_ENDOFNAMES` (353/366), broadcasts JOIN to channel. The original
-      crash bug and auth-check bug are long fixed (see "Bugs found in code review, 2026-08-08"
-      below); `addMember()` now returns `bool` so a rejected add can never be mistaken for
-      success (2026-08-08).
-- [x] first joiner becomes operator — **2026-08-08**, `handleJoin` calls `channel->addOperator(client)`
-      when creating a new channel, and `Channel` has a real `_operators` list with
-      `addOperator()`/`removeOperator()` (used by `MODE +o`/`-o` too). **Known bug in this,
-      see "Bugs" below:** `isOperator()` doesn't actually check `_operators` — see next section.
-- [x] `PRIVMSG`: still an empty stub — to a channel (broadcast to members) and to a nick (direct)
-- [x] `PART`: still an empty stub — remove from channel, broadcast, destroy channel if now empty
-- [x] `QUIT`: still an empty stub — remove from all joined channels, broadcast, close fd, clean up
-- [x] `Channel::broadcastMessage()` (called `send()` directly, bypassing `queueSend()`/`POLLOUT`,
-      violating subject rule D2) — **fixed 2026-08-08, removed entirely.** `Channel` has no
-      `Server*` to call `queueSend()` through, so rather than plumb one in, the broadcast logic
-      moved to `Server::broadcastToChannel(channel, message, sender)` (`Server.cpp`), which
-      already has `queueSend()` and just iterates `channel->getMembers()`. Both call sites
-      (`handleJoin`'s JOIN broadcast, `handleMode`'s MODE broadcast) updated. `sendTopic()`/
-      `sendNamesList()` were already fixed earlier the same day via `sendNumericReply()`.
-- [x] `_channels` map entries (`new Channel(...)`) are never freed — **already fixed** (found
-      already-implemented 2026-08-08, doc was stale): `Server::~Server()`'s cleanup loop is
-      live, not commented out — deletes every `Channel*` and clears the map.
-- [x] **`Channel::MAX_MEMBERS` (hard cap of 10) doesn't seem to be checked anywhere
-      reachable — found 2026-08-08.** `handleJoin` only checks `isUserLimitReached()`,
-      which is the `_userLimit`/`MODE +l` value (defaults to unlimited, 0), not
-      `MAX_MEMBERS`; `Channel::addMember`'s own guard uses that same `_userLimit`-based
-      check too. So a channel can grow past 10 members freely unless `+l` is explicitly
-      set — flagging in case that's not intentional, not fixed yet.
+- [x] `JOIN` (now in its own file, `srcs/handlers/joinHandler.cpp` — **reorganized 2026-08-09**,
+      was in `ServerComandHandlers.cpp`): checks are now run against the *existing* channel
+      before a new one is ever created (previously channel creation happened first, so a
+      rejected JOIN on a brand-new channel name could still leave a phantom empty `Channel`
+      behind — that ordering bug is gone), then creates the channel only once everything
+      passes. Adds member, sends `RPL_NOTOPIC`/`RPL_TOPIC` (331/332) and `RPL_NAMREPLY`/
+      `RPL_ENDOFNAMES` (353/366), broadcasts JOIN to the rest of the channel.
+      `Channel::addMember()` returns `bool` and now enforces **both** the hard `MAX_MEMBERS`
+      cap (10) **and** the `MODE +l` limit — closes the "`MAX_MEMBERS` not checked anywhere
+      reachable" gap flagged 2026-08-08.
+- [x] **JOIN self-echo — fixed 2026-08-15.** The joining client now sees their own `:nick JOIN
+      #channel` line echoed back (sent via `queueSend` right after `broadcastToChannel`).
+      Real IRC sends this as confirmation to the joiner that they successfully joined,
+      separately from the `331`/`353` replies that follow. Verified in irssi — joiner sees
+      `nick has joined #channel` before the topic/names list.
+- [x] first joiner becomes operator, and `isOperator()` bug is fixed — 2026-08-08 work,
+      see "Bugs found in code review" below for the fix details.
+- [x] `PRIVMSG` — **implemented 2026-08-09.** Channel target (`#name`): must be a member,
+      broadcasts to the rest of the channel via `broadcastToChannel()`. Nick target: looked
+      up via `getClientByNickname()`, sent directly via `queueSend()` — no membership
+      requirement, as expected for a DM. `401`/`403`/`442`/`461` for the unhappy paths.
+- [x] `PART` — **implemented 2026-08-09**, in `ServerComandHandlers.cpp`. Removes the client
+      from the channel, broadcasts `PART`, deletes the `Channel` if it's now empty (mirrors
+      the existing `_channels` cleanup discipline). **Bug found in this, see Bugs below:**
+      its three `sendNumericReply()` calls pass `""` as the target instead of
+      `replyTarget(client)`.
+- [x] `QUIT` — **implemented 2026-08-09.** Broadcasts `QUIT` to every channel the client is a
+      member of, then calls `disconnectClient()` for cleanup/close/free. **Had a serious bug
+      (skipped `disconnectClient()`, leaked `Client*`, stale `_pfds` entry) — fixed same day,
+      see Bugs below.**
+- [x] `Channel::broadcastMessage()` (used to call `send()` directly, bypassing `queueSend()`/
+      `POLLOUT`) — removed entirely; broadcasting now lives in `Server::broadcastToChannel()`,
+      used by JOIN/MODE/TOPIC/PART/PRIVMSG(channel)/QUIT.
+- [x] `_channels` map entries (`new Channel(...)`) are freed in `Server::~Server()`, and now
+      also in `handlePart` (empty-channel cleanup) — no leak on either path.
 
 ### Phase 4 — Operator commands (in progress)
 - [x] `handleMode` (`+/-i`, `+/-t`, `+/-k`, `+/-l`, `+/-o`) is written **and wired in** —
@@ -96,6 +122,9 @@ Team working doc for the `ircserv` implementation. Detailed Phase 1 design/decis
       switch (doc was stale: this was previously flagged as unwired, no longer true). Every
       branch replies with a real numeric; see the earlier "which case do I need std::cerr vs
       sendNumeric" review — this handler was already fully converted before that review.
+      **Housekeeping note:** it now lives in `srcs/handlers/topicHandler.cpp`, not
+      `handleTopic` — filename doesn't match contents, harmless (still compiles and links
+      fine either way) but worth a rename if you're touching that file again.
 - [x] **Bug found 2026-08-08: `Channel::isOperator()` didn't check `_operators` at all —
       fixed same day.** It used to check `!_members.empty() && _members[0] == client` ("are
       you literally the first member"), while `addOperator()`/`removeOperator()` maintain a
@@ -105,8 +134,14 @@ Team working doc for the `ircserv` implementation. Detailed Phase 1 design/decis
       becomes the new first member would inherit operator status never granted to them. Now
       `isOperator()` searches `_operators` (mirrors `isMember()` searching `_members`), so
       `+o`/`-o` actually take effect for whoever they're applied to.
-- [ ] `KICK #channel nick [:reason]` — not started
-- [ ] `INVITE nick #channel` — not started
+- [ ] `KICK #channel nick [:reason]` — not started, no `CMD_KICK`/`handleKick` at all yet
+- [ ] `INVITE nick #channel` — not started, no `CMD_INVITE`/`handleInvite` at all yet (and
+      `Channel` has no invite-list concept, so `+i` invite-only channels currently have no
+      way to let anyone in once set — worth keeping in mind when implementing INVITE)
+- [ ] `Channel.hpp` declares an `AddMemberResult` enum (`ADD_SUCCESS`/`ALREADY_MEMBER`/
+      `CHANNEL_FULL`) that nothing uses — `addMember()` still returns plain `bool`. Looks
+      like a leftover from an in-progress refactor toward more granular error reporting;
+      either finish wiring it through or remove it, currently just dead code.
 - [x] `TOPIC #channel [:newtopic]` — **2026-08-09**, `CMD_TOPIC` added to the enum,
       `getCommandType()`, and `executeCommand()`; `handleTopic()` (`ServerComandHandlers.cpp`)
       handles both query (no second param → reuses `sendTopic()`, same 331/332 as JOIN) and
@@ -160,6 +195,35 @@ Team working doc for the `ircserv` implementation. Detailed Phase 1 design/decis
       should already rule out this class of freeze. Retest now that the build is fixed; if
       it still reproduces, it's a new bug, not the old blocking one.
 
+## Bugs found in code review, 2026-08-09 (PART / QUIT)
+- [x] **`handleQuit` didn't go through `disconnectClient()` — fixed 2026-08-09 (Tier 0,
+      crash/corruption risk).** It used to do its own `close(clientFd)` +
+      `_clients.erase(clientFd)`, which skipped `deleteClient()` (leaked every `Client*`
+      on `QUIT`) and skipped pushing the fd onto `_fdsToRemove`, leaving a stale `pollfd`
+      in `_pfds` that could later report `POLLNVAL` and route into a second
+      `disconnectClient()` call — which, if the OS had reused that fd number for a new
+      connection by then, could close/free the *new* client instead. Now `handleQuit`
+      does the channel `QUIT` broadcast first (needs the client's nickname/membership,
+      which `disconnectClient()` is about to tear down), then calls `disconnectClient(
+      clientFd)` for everything else — channel-membership cleanup, `close()`,
+      `deleteClient()`, and the deferred `_fdsToRemove` push, all in the one already-
+      correct place. **Not addressed in this fix, a separate smaller gap:** unlike
+      `handlePart`, neither `handleQuit` nor `disconnectClient()` erases/frees a `Channel`
+      that becomes empty as a result — it's left in `_channels` with zero members until
+      something else joins it again. Low severity (a few live but empty `Channel` objects,
+      not a leak on program exit since `~Server()` still frees everything), not fixed.
+- [ ] **`handlePart`'s three `sendNumericReply()` calls pass `""` as the target instead of
+      `replyTarget(client)`** — e.g. `sendNumericReply(clientFd, ERR_NEEDMOREPARAMS, "",
+      "PART", "Not enough parameters")` produces `:ircserv 461  PART :Not enough
+      parameters` (double space, empty target) instead of `:ircserv 461 jin PART :Not
+      enough parameters`. Every other handler in the codebase uses `replyTarget(client)`
+      here. Root cause: `client` is only fetched via `getClient(clientFd)` partway through
+      the function (after the first two early-return checks), so those two checks don't
+      have a `client` in scope yet to pass — unlike every other handler, which fetches
+      `client` as its very first line. **Fix direction:** move `Client *client =
+      getClient(clientFd);` to the top of `handlePart` (with a `!client` guard, matching
+      the other handlers) and use `replyTarget(client)` in all three calls.
+
 ## Bug found in manual testing, 2026-08-08 (registration order-dependency)
 - [x] **Welcome message never fired if `NICK` arrived after `USER` — fixed.** The
       "registration complete?" check moved out of `handleUser()` alone into a shared
@@ -171,6 +235,9 @@ Team working doc for the `ircserv` implementation. Detailed Phase 1 design/decis
       fixes the earlier double-welcome-on-repeat-`USER`/`PASS` bug, and `Client::isRegistered()`
       is now the shared source of truth used by `handleJoin`'s auth check above.
 
+## Optinal todos (in order of importance)
+- [] accept lower case (pass), not only upper case(PASS) like IRC
+- [] handle join #general, #food (like real IRC): skip it, when we don't have time
 ---
 
 # How to Test
@@ -186,11 +253,16 @@ Team working doc for the `ircserv` implementation. Detailed Phase 1 design/decis
 | Errors (wrong pass, dup nick, missing params, etc.) | [x] real numerics to the client (`464`/`433`/`461`/`462`/`451`) — **and** still logged on server stderr |
 | Unknown command | [x] `421 ERR_UNKNOWNCOMMAND` |
 | Commands before `PASS` succeeds, or before registration completes | [x] `451 ERR_NOTREGISTERED` (`PASS` is the gatekeeper — see Phase 2) |
-| Real IRC client (irssi) full registration | [~] `001` now sent — not yet live-verified against irssi |
-| `JOIN` | [x] works, sends `331`/`332`/`353`/`366` + broadcasts `JOIN` to the channel; first joiner becomes operator |
+| Real IRC client (irssi) full registration | [x] `001` now sent — **live-verified 2026-08-15** against irssi 1.2.3, multi-client broadcast working |
+| `PING`/`PONG` keepalive | [x] works — client sends PING, server replies PONG (required by RFC; clients timeout without it) |
+| `NAMES` list on JOIN | [x] works — now shows member nicknames with `@` prefix for operators (was empty, fixed 2026-08-15) |
+| `JOIN` | [x] works, sends `331`/`332`/`353`/`366` + broadcasts `JOIN` to the channel; first joiner becomes operator; **gap:** joiner isn't self-echoed the `JOIN` line itself |
 | `MODE` (`i`,`t`,`k`,`l`,`o`) | [x] works, operator-gated, broadcasts to channel (sender not self-echoed) |
 | `TOPIC` | [x] works — query always allowed; set is operator-gated when `+t`; self-echoed to setter + broadcast to channel |
-| `PRIVMSG` / `PART` / `QUIT` | [ ] empty stubs |
+| `PRIVMSG` (channel + direct) | [x] works — membership-gated for channels, `queueSend()` direct for nicks; **broadcast verified 2026-08-15 with 2+ clients** |
+| `PART` | [~] works, but its error replies are malformed (empty target — see Bugs) |
+| `QUIT` | [x] works — now goes through `disconnectClient()` for cleanup (fixed 2026-08-15) |
+| `KICK` / `INVITE` | [ ] not started |
 
 ## 1. Build checks
 ```bash
@@ -391,9 +463,50 @@ Same setup as MODE above (Window 2 = operator, Window 3 = member).
   (query **or** set) → `:ircserv 442 <nick> #general :You're not on that channel` — checked
   before the query/set branch, so even a *query* from a non-member is rejected.
 
-### PRIVMSG / PART / QUIT
-- Not implemented yet — empty stubs (Phase 3 TODO). Sending them currently does nothing
-  visible on either window and logs nothing distinctive; not a crash, just a no-op.
+### PING
+**Works anytime, no registration required** — useful for testing that the server is alive
+and responsive before full registration.
+- **Happy:** `PING` or `PING :ircserv` → server replies `PONG :ircserv` (or echoes the param)
+- **Happy — works before registration:** unregistered connection sends `PING` → receives `PONG :ircserv`
+- **Happy — works after registration:** any time, `PING` always gets `PONG` back
+- **Use case:** real IRC clients send `PING` periodically to detect dead/hung servers; irssi
+  uses this to keep the connection alive and detect timeouts. Subject requirement: no client should
+  see this as an error (which they would if we returned `421 ERR_UNKNOWNCOMMAND`).
+
+### PRIVMSG
+Setup: Window 2 (`jin`) and Window 3 (`ha`) both `JOIN #general`.
+- **Happy — to a channel:** Window 2 sends `PRIVMSG #general :hello` → Window 3 sees
+  `:jin PRIVMSG #general :hello`; Window 2 itself sees nothing (broadcast excludes sender,
+  same as JOIN/MODE/TOPIC).
+- **Happy — direct to a nick:** Window 2 sends `PRIVMSG ha :hi there` → Window 3 sees
+  `:jin PRIVMSG ha :hi there`; no channel membership required for this form.
+- **Unhappy — missing params:** `PRIVMSG` alone, or `PRIVMSG #general` with no message →
+  `:ircserv 461 jin PRIVMSG :Not enough parameters`.
+- **Unhappy — channel doesn't exist:** `PRIVMSG #nope :hi` → `:ircserv 403 jin #nope :No such channel`.
+- **Unhappy — not a member of the target channel:** a client who hasn't joined sends
+  `PRIVMSG #general :hi` → `:ircserv 442 <nick> #general :You're not on that channel`.
+- **Unhappy — nick doesn't exist:** `PRIVMSG nobody :hi` → `:ircserv 401 jin nobody :No such nick`.
+
+### PART
+Setup: Window 2 and Window 3 both in `#general`.
+- **Happy:** Window 2 sends `PART #general` → Window 3 sees `:jin PART #general`; Window 2
+  is removed from the channel's member list.
+- **Happy — last member parting destroys the channel:** if Window 2 was the only member,
+  `#general` is erased from `_channels` and freed — a later `JOIN #general` from anyone
+  recreates it fresh (no stale topic/modes/bans carried over).
+- **Unhappy — missing channel param, channel doesn't exist, not a member:** all three reply,
+  but currently with a **malformed target** — e.g. `:ircserv 461  PART :Not enough
+  parameters` (double space, target empty instead of `jin`/`*`) — see Bugs, not fixed yet.
+
+### QUIT
+Setup: Window 2 and Window 3 both in `#general`.
+- **Happy path (functionally):** Window 2 sends `QUIT` → Window 3 sees
+  `:jin QUIT :Client disconnected`; Window 2's connection closes.
+- **Fixed 2026-08-15** (was a real bug — see Bugs above): reconnecting a new client shortly
+  after a `QUIT` used to risk the fd number being reused and a stale `POLLNVAL` closing/
+  freeing the *new* connection. `handleQuit` now goes through `disconnectClient()`, which
+  removes the fd from `_pfds` in the same eventLoop pass, so there's no stale entry left
+  to misfire on.
 
 ## 6. Fragmentation test (subject IV.3 — the `ctrl+D` test)
 ```bash
@@ -434,3 +547,9 @@ ps aux | grep ircserv | grep -v grep           # after tests: no leftover server
 - [ ] exactly **one** `poll()` handles everything — read *and* write; no fork, no threads
 - [ ] server never crashes / never quits unexpectedly (crash = grade 0)
 - [ ] be ready for a small live code modification during evaluation
+
+---
+
+# Defense Note
+- irssi's CAP unknown — NOT a bug. 
+   - CAP is a modern IRC extension for optional capability negotiation. When irssi sends it and we return 421 ERR_UNKNOWNCOMMAND, irssi gracefully ignores it (it's designed for servers that don't support CAP). The message is informational, not an error — connection proceeds normally.

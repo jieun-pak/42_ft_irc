@@ -198,6 +198,9 @@ void Server::handleJoin(const Message &msg, int clientFd)
 
     broadcastToChannel(channel, joinMessage, client);
 
+    // 12b. Self-echo: send JOIN back to the joiner too (real IRC does this as confirmation)
+    queueSend(clientFd, joinMessage);
+
     // 13. Send topic information to joining client
     sendTopic(channel, client);
 
