@@ -1,2 +1,7 @@
 *.o
 srcs/*.o
+ircserv/ircserv
+compile_commands.json
+.vscode/
+.nfs*
+jin-note/
