@@ -258,6 +258,8 @@ Server::CommandType Server::getCommandType(const std::string& command)
 		return CMD_PING;
 	if (command == "TOPIC")
 		return CMD_TOPIC;
+	if (command == "KICK")
+		return CMD_KICK;
 	return CMD_UNKNOWN;
 }
 
@@ -362,6 +364,9 @@ void	Server::executeCommand(const Message& msg, int clientFd)
 		break;
 	case CMD_TOPIC:
 		handleTopic(msg, clientFd);
+		break;
+	case CMD_KICK:
+		handleKick(msg, clientFd);
 		break;
 
 	default:

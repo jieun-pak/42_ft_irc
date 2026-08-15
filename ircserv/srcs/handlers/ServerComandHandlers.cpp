@@ -389,3 +389,80 @@ void Server::handlePing(const Message &msg, int clientFd)
 
     queueSend(clientFd, pongMsg);
 }
+
+void Server::handleKick(const Message &msg, int clientFd)
+{
+    Client *client = getClient(clientFd);
+    if (!client)
+        return;
+
+    // 1. Validate parameters
+    if (msg.getParams().size() < 2)
+    {
+        sendNumericReply(clientFd, ERR_NEEDMOREPARAMS, replyTarget(client), "KICK", "Not enough parameters");
+        return;
+    }
+
+    const std::string &channelName = msg.getParams()[0];
+    const std::string &targetNick = msg.getParams()[1];
+
+    // 2. Check channel exists
+    if (!isChannelExists(channelName))
+    {
+        sendNumericReply(clientFd, ERR_NOSUCHCHANNEL, replyTarget(client), channelName, "No such channel");
+        return;
+    }
+
+    Channel *channel = _channels[channelName];
+
+    // 3. Check client is in channel
+    if (!channel->isMember(client))
+    {
+        sendNumericReply(clientFd, ERR_NOTONCHANNEL, replyTarget(client), channelName, "You're not on that channel");
+        return;
+    }
+
+    // 4. Check client is operator
+    if (!channel->isOperator(client))
+    {
+        sendNumericReply(clientFd, ERR_CHANOPRIVSNEEDED, replyTarget(client), channelName, "You're not channel operator");
+        return;
+    }
+
+    // 5. Check target nick exists
+    Client *target = getClientByNickname(targetNick);
+    if (!target)
+    {
+        sendNumericReply(clientFd, ERR_NOSUCHNICK, replyTarget(client), targetNick, "No such nick");
+        return;
+    }
+
+    // 6. Check target is in channel
+    if (!channel->isMember(target))
+    {
+        sendNumericReply(clientFd, ERR_USERNOTINCHANNEL, replyTarget(client), targetNick, "User is not on that channel");
+        return;
+    }
+
+    // 7. Build KICK message with optional reason
+    std::string reason = "kicked";
+    if (msg.getParams().size() > 2)
+        reason = msg.getParams()[2];
+
+    std::string kickMsg = ":" + client->getNickname() + " KICK " + channelName + " " + targetNick + " :" + reason + "\r\n";
+
+    // 8. Broadcast KICK to channel
+    broadcastToChannel(channel, kickMsg, NULL);
+
+    // 9. Remove target from channel
+    target->leaveChannel(channelName);
+    channel->removeMember(target);
+    channel->removeOperator(target);
+
+    // 10. Delete channel if empty
+    if (channel->getMembers().empty())
+    {
+        _channels.erase(channelName);
+        delete channel;
+    }
+}
