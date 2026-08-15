@@ -67,7 +67,6 @@ void Server::handleNick(const Message &msg, int clientFd)
 	{
 		std::cerr << "Error: Invalid nickname format." << std::endl;
 		sendNumericReply(clientFd, ERR_ERRONEUSENICKNAME, replyTarget(client),  msg.getParams()[0], "Invalid nickname format");
-		// pass (only the 7 codes on the Phase 2 checklist were implemented)
 		return;
 	}
 	// 3. No-op guard: re-setting to the SAME nickname isn't a real change —
