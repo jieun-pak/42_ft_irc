@@ -66,7 +66,7 @@ void Server::handleNick(const Message &msg, int clientFd)
 	if (!isValidNickname(msg.getParams()[0]))
 	{
 		std::cerr << "Error: Invalid nickname format." << std::endl;
-		// correct code here is 432 ERR_ERRONEUSNICKNAME — out of scope for this
+		sendNumericReply(clientFd, ERR_ERRONEUSENICKNAME, replyTarget(client),  msg.getParams()[0], "Invalid nickname format");
 		// pass (only the 7 codes on the Phase 2 checklist were implemented)
 		return;
 	}
