@@ -148,10 +148,9 @@ Team working doc for the `ircserv` implementation. Detailed Phase 1 design/decis
       client is removed from the invite list via `channel->removeInvited(client)` (they've
       "used" the invite). Three new methods in `Channel`: `addInvited()`, `removeInvited()`,
       `isInvited()`, following the same pattern as banned-users and operators lists.
-- [ ] `Channel.hpp` declares an `AddMemberResult` enum (`ADD_SUCCESS`/`ALREADY_MEMBER`/
-      `CHANNEL_FULL`) that nothing uses — `addMember()` still returns plain `bool`. Looks
-      like a leftover from an in-progress refactor toward more granular error reporting;
-      either finish wiring it through or remove it, currently just dead code.
+- [x] `Channel.hpp` declared an unused `AddMemberResult` enum — **removed 2026-08-15**. 
+      It was dead code from an incomplete refactor; `addMember()` returns plain `bool` as 
+      intended, which is sufficient for distinguishing success from failure cases.
 - [x] `TOPIC #channel [:newtopic]` — **2026-08-09**, `CMD_TOPIC` added to the enum,
       `getCommandType()`, and `executeCommand()`; `handleTopic()` (`ServerComandHandlers.cpp`)
       handles both query (no second param → reuses `sendTopic()`, same 331/332 as JOIN) and

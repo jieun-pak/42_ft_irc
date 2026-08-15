@@ -5,13 +5,6 @@
 #include <vector>
 
 
-enum AddMemberResult
-{
-    ADD_SUCCESS,
-    ALREADY_MEMBER,
-    CHANNEL_FULL
-};
-
 class Client;
 
 class Channel
