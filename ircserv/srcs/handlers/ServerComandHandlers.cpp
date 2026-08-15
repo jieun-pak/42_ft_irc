@@ -370,3 +370,22 @@ void Server::handleQuit(const Message &msg, int clientFd)
     // pollfd in _pfds that could later misroute to a reused fd.
     disconnectClient(clientFd);
 }
+
+void Server::handlePing(const Message &msg, int clientFd)
+{
+    Client *client = getClient(clientFd);
+    if (!client)
+        return;
+
+    // PING allows the client to verify the server is alive. Server responds
+    // with PONG. If the client sent a parameter, echo it back; otherwise send
+    // the server name.
+    std::string pongMsg = "PONG :";
+    if (msg.getParams().size() > 0)
+        pongMsg += msg.getParams()[0];
+    else
+        pongMsg += SERVER_NAME;
+    pongMsg += "\r\n";
+
+    queueSend(clientFd, pongMsg);
+}

@@ -54,6 +54,7 @@ class Server
     	    CMD_PART,
     	    CMD_PRIVMSG,
     	    CMD_QUIT,
+    	    CMD_PING,
     	    CMD_TOPIC
     	};
 
@@ -94,6 +95,7 @@ class Server
 		void	handlePart(const Message& msg, int clientFd);
 		void	handlePrivmsg(const Message& msg, int clientFd);
 		void	handleQuit(const Message& msg, int clientFd);
+		void	handlePing(const Message& msg, int clientFd);
 		void	handleTopic(const Message& msg, int clientFd);
 
 		// JOIN command helpers

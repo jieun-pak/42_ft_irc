@@ -254,6 +254,8 @@ Server::CommandType Server::getCommandType(const std::string& command)
 		return CMD_PRIVMSG;
 	if (command == "QUIT")
 		return CMD_QUIT;
+	if (command == "PING")
+		return CMD_PING;
 	if (command == "TOPIC")
 		return CMD_TOPIC;
 	return CMD_UNKNOWN;
@@ -316,14 +318,14 @@ void	Server::executeCommand(const Message& msg, int clientFd)
 		return;
 	}
 
-	if (client && !client->isPasswordAuthenticated() && type != CMD_PASS)
+	if (client && !client->isPasswordAuthenticated() && type != CMD_PASS && type != CMD_PING)
 	{
 		sendNumericReply(clientFd, ERR_NOTREGISTERED, replyTarget(client), "", "You have not registered");
 		return;
 	}
 
-	//after PASS, only PASS/NICK/USER are allowed until registration completes
-	if (client && !client->isRegistered() && type != CMD_PASS && type != CMD_NICK && type != CMD_USER)
+	//after PASS, only PASS/NICK/USER/PING are allowed until registration completes
+	if (client && !client->isRegistered() && type != CMD_PASS && type != CMD_NICK && type != CMD_USER && type != CMD_PING)
 	{
 		sendNumericReply(clientFd, ERR_NOTREGISTERED, replyTarget(client), "", "You have not registered");
 		return;
@@ -354,6 +356,9 @@ void	Server::executeCommand(const Message& msg, int clientFd)
 		break;
 	case CMD_QUIT:
 		handleQuit(msg, clientFd);
+		break;
+	case CMD_PING:
+		handlePing(msg, clientFd);
 		break;
 	case CMD_TOPIC:
 		handleTopic(msg, clientFd);
