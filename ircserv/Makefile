@@ -1,11 +1,8 @@
 #compiler & flag
-CC = c++
-CFLAGS = -Wall -Wextra -Werror -std=c++98
-
-# target executable
+CXX = c++
+CXXFLAGS = -Wall -Wextra -Werror -std=c++98
 NAME	= ircserv
 
-# sources
 SRCS	=	srcs/main.cpp \
 			srcs/Server.cpp \
 			srcs/handlers/ServerComandHandlers.cpp \
@@ -14,14 +11,9 @@ SRCS	=	srcs/main.cpp \
 			srcs/Client.cpp \
 			srcs/signal.cpp \
  			srcs/Channel.cpp \
-# 			TODO: UPDATE
-# 			srcs/Authentication.cpp \
 
-# object
 OBJS = $(SRCS:.cpp=.o)
 
-# header
-#TODO: UPDATE
 HEADERS	=	includes/ft_irc.hpp \
 			includes/Server.hpp \
 			includes/Client.hpp \
@@ -29,16 +21,13 @@ HEADERS	=	includes/ft_irc.hpp \
 			includes/Replies.hpp \
 			includes/signal.hpp
 
-# default target
 all: $(NAME)
 
-# linking objects to create executable
 $(NAME): $(OBJS)
-	@$(CC) $(CFLAGS) -o $(NAME) $(OBJS)
+	@$(CXX) $(CXXFLAGS) -o $(NAME) $(OBJS)
 
-# compil sources to objects
 %.o: %.cpp $(HEADERS)
-	$(CC) $(CFLAGS) -c $< -o $@
+	$(CXX) $(CXXFLAGS) -c $< -o $@
 
 # clean
 clean:
